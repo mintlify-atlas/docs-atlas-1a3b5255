@@ -1,0 +1,70 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "attriblink",
+  "projectDescription": "Multi-period attribution linking for portfolio returns using the Carino method",
+  "theme": "linden",
+  "primaryColor": "#1e3a8a",
+  "lightColor": "#3b82f6",
+  "darkColor": "#1e40af",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get Started",
+        "pages": [
+          "introduction",
+          "installation",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Core Concepts",
+        "pages": [
+          "concepts/attribution-linking",
+          "concepts/carino-method",
+          "concepts/k-factor"
+        ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "guides/basic-usage",
+          "guides/validation",
+          "guides/interpreting-results",
+          "guides/limitations"
+        ]
+      },
+      {
+        "group": "API Reference",
+        "pages": [
+          "api/link",
+          "api/attribution-result",
+          "api/exceptions"
+        ]
+      },
+      {
+        "group": "Examples",
+        "pages": [
+          "examples/quarterly-attribution",
+          "examples/multi-effect",
+          "examples/validation-handling"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Carino multi-period linking method",
+    "Automatic k-factor computation",
+    "Period-by-period effect validation",
+    "Geometric cumulative return calculation",
+    "Comprehensive attribution result object",
+    "Support for multiple attribution effects"
+  ],
+  "publicApiSurface": [
+    "link()",
+    "AttributionResult",
+    "AttributionError",
+    "EffectsSumMismatchError",
+    "compute_geometric_cumulative_return()",
+    "get_k_factor()"
+  ]
+}
