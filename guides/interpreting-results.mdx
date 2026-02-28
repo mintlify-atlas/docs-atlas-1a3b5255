@@ -1,0 +1,368 @@
+---
+title: Interpreting Results
+description: How to read and understand attribution linking results
+---
+
+## Overview
+
+The `AttributionResult` object returned by `link()` contains comprehensive information about your attribution analysis. This guide explains how to interpret the results, with special focus on the k-factor and linked effects.
+
+## Reading the Summary Output
+
+### Summary Table Structure
+
+The `summary()` method displays a table with the following structure:
+
+```python
+result = link(effects, portfolio_returns, benchmark_returns)
+print(result.summary())
+```
+
+```
+Attribution Summary (Carino Method)
+==================================================================
+
+             Portfolio Benchmark     Active allocation selection interaction
+------------------------------------------------------------------
+Mar 2025        0.0250     0.0180     0.0070     0.0050     0.0030     0.0010
+Jun 2025        0.0350     0.0280     0.0070     0.0060     0.0020     0.0010
+Sep 2025       -0.0120    -0.0150     0.0030     0.0020    -0.0010     0.0000
+Dec 2025        0.0480     0.0380     0.0100     0.0080     0.0040     0.0020
+Total           0.1012     0.0746     0.0266     0.0210     0.0080     0.0040
+
+Smoothing Factor (k): 1.0123
+Sum Check: ✓
+```
+
+### Columns Explained
+
+| Column | Description |
+|--------|-------------|
+| **Period** (rows) | Date or period identifier from your index |
+| **Portfolio** | Portfolio return for each period (period rows) or total geometric return (Total row) |
+| **Benchmark** | Benchmark return for each period (period rows) or total geometric return (Total row) |
+| **Active** | Excess return (Portfolio - Benchmark) for each period |
+| **Effect columns** | Period-by-period effects (period rows) or Carino-linked effects (Total row) |
+
+### Total Row
+
+The **Total** row contains cumulative values:
+
+- **Portfolio Total**: Geometric cumulative return = $\prod_{t=1}^{n}(1 + r_{p,t}) - 1$
+- **Benchmark Total**: Geometric cumulative return = $\prod_{t=1}^{n}(1 + r_{b,t}) - 1$
+- **Active Total**: Cumulative Excess Return (CER) = Portfolio Total - Benchmark Total
+- **Effect Totals**: **Carino-linked effects** (scaled by k-factor)
+
+<Note>
+The Total row shows **geometric** returns, not simple sums. This is why the Active Total may not equal the sum of period-by-period Active returns.
+</Note>
+
+### Footer Information
+
+**Smoothing Factor (k)**: The Carino k-factor used to scale effects (see below for interpretation)
+
+**Sum Check**: Indicates whether linked effects sum to cumulative excess return:
+- ✓ = Sum matches (within numerical tolerance)
+- ✗ = Sum doesn't match (should never happen with attriblink)
+
+## Understanding Linked Effects
+
+Linked effects are the **scaled** attribution effects that account for compounding across periods.
+
+### What Changes from Period Effects?
+
+Period effects represent attribution for each individual period:
+```python
+print(result.effects)  # Original period-by-period effects
+```
+
+Linked effects represent attribution for the **entire multi-period horizon**:
+```python
+print(result.linked_effects)  # Carino-linked effects
+```
+
+### Key Property: Additivity
+
+The fundamental property of linked effects:
+
+$$
+\sum_{j} Effect_{linked,j} = CER
+$$
+
+Where $CER$ is the cumulative excess return.
+
+```python
+# Verify additivity
+cumulative_excess = (1 + portfolio_returns).prod() - (1 + benchmark_returns).prod() - 1
+linked_sum = result.linked_effects.sum()
+
+print(f"Sum of linked effects:    {linked_sum:.6f}")
+print(f"Cumulative excess return: {cumulative_excess:.6f}")
+print(f"Match: {abs(linked_sum - cumulative_excess) < 1e-10}")  # Always True
+```
+
+### How Linking Works
+
+The Carino method scales each effect by the **k-factor**:
+
+$$
+Effect_{linked,j} = k \times \sum_{t=1}^{n} Effect_{j,t}
+$$
+
+Where:
+- $k$ = Carino smoothing factor
+- $Effect_{j,t}$ = Period effect for attribution source $j$ in period $t$
+
+## K-Factor Interpretation
+
+The k-factor is the **most important** diagnostic for understanding how the linking adjustment affects your results.
+
+### What the k-Factor Tells You
+
+The k-factor is a **smoothing coefficient** that adjusts raw attribution effects to achieve geometric additivity. It bridges the gap between arithmetic (period-by-period) and geometric (cumulative) return calculations.
+
+### k-Factor Formula
+
+$$
+k = \frac{\ln(1 + CER)}{\sum_{t=1}^{n} \ln(1 + ER_t)}
+$$
+
+Where:
+- $CER$ = Cumulative Excess Return (geometric)
+- $ER_t$ = Period excess return = $r_{p,t} - r_{b,t}$
+
+### Interpretation Guide
+
+#### k > 1: Volatile Excess Returns
+
+**When k > 1** (e.g., k = 1.15):
+
+| Scenario | Meaning |
+|----------|---------||
+| **Volatile excess returns** | Period-by-period excess returns varied significantly (some positive, some negative) |
+| **Compounding asymmetry** | Geometric linking would overweight negative periods; Carino scales up to compensate |
+| **Typical range** | 1.0 to ~1.5 for moderate volatility |
+
+**Practical example**: If k = 1.15, the raw sum of attribution effects is scaled **up** by 15%. This typically occurs when:
+- Portfolio and benchmark returns have opposite signs in some periods
+- Large return dispersion across periods
+- Excess returns oscillate between positive and negative
+
+```python
+# Example: Volatile scenario
+portfolio = pd.Series([0.05, -0.02, 0.08, -0.03], 
+                       index=pd.date_range("2024-01-01", periods=4, freq="QE"))
+benchmark = pd.Series([0.03, 0.01, 0.05, 0.00],
+                       index=portfolio.index)
+
+result = link(effects, portfolio, benchmark)
+print(f"k-factor: {result.k_factor:.4f}")  # Likely > 1 due to volatility
+```
+
+#### k < 1: Consistent Excess Returns
+
+**When k < 1** (e.g., k = 0.88):
+
+| Scenario | Meaning |
+|----------|---------||
+| **Consistent excess returns** | Portfolio consistently outperformed (or underperformed) benchmark |
+| **Compounding benefit/harm** | Geometric compounding works in your favor; less scaling needed |
+| **Typical range** | ~0.5 to 1.0 for consistently positive/negative excess |
+
+**Practical example**: If k = 0.88, the raw sum is scaled **down** by 12%. This typically occurs when:
+- Excess returns are consistently positive (or consistently negative)
+- Geometric compounding naturally aligns with arithmetic sum
+- Smooth, directional performance pattern
+
+```python
+# Example: Consistent outperformance
+portfolio = pd.Series([0.025, 0.030, 0.028, 0.032])
+benchmark = pd.Series([0.018, 0.022, 0.020, 0.024])
+
+result = link(effects, portfolio, benchmark)
+print(f"k-factor: {result.k_factor:.4f}")  # Likely < 1 due to consistency
+```
+
+#### k = 1: No Adjustment Needed
+
+**When k = 1**:
+
+| Scenario | Meaning |
+|----------|---------||
+| **Single period** | No linking needed; arithmetic = geometric |
+| **Zero cumulative excess** | CER ≈ 0; no adjustment necessary |
+| **Log-linear returns** | Period excess returns follow a specific pattern where arithmetic and geometric align |
+
+### k-Factor as a Diagnostic
+
+Use the k-factor to understand your return patterns:
+
+```python
+def analyze_attribution(result):
+    """
+    Provide insights based on k-factor.
+    """
+    k = result.k_factor
+    
+    if k > 1.1:
+        print(f"k = {k:.4f}: HIGH volatility in excess returns")
+        print("→ Attribution effects scaled UP significantly")
+        print("→ Consider period-level analysis for outliers")
+    elif k < 0.9:
+        print(f"k = {k:.4f}: CONSISTENT excess returns")
+        print("→ Attribution effects scaled DOWN")
+        print("→ Strong directional performance")
+    else:
+        print(f"k = {k:.4f}: MODERATE linking adjustment")
+        print("→ Arithmetic and geometric returns closely aligned")
+
+analyze_attribution(result)
+```
+
+## Using AttributionResult Properties
+
+The `AttributionResult` object provides multiple ways to access information:
+
+### Linked Effects
+
+```python
+# As a Series
+print(result.linked_effects)
+# allocation      0.0210
+# selection       0.0080
+# interaction     0.0040
+
+# Dictionary-like access
+alloc = result['allocation']
+select = result['selection']
+
+# As a numpy array
+import numpy as np
+arr = np.array(result)  # Array of linked effects
+```
+
+### Metadata
+
+```python
+# Date range
+start, end = result.date_range
+print(f"Analysis period: {start} to {end}")
+
+# Number of periods
+print(f"Number of periods: {result.num_periods}")
+
+# Effect names
+print(f"Attribution sources: {result.effect_columns}")
+
+# k-factor
+print(f"Smoothing factor: {result.k_factor:.4f}")
+```
+
+### Full Data Access
+
+```python
+# Complete DataFrame with all data
+df = result.data
+print(df)
+
+# Export to CSV
+df.to_csv('attribution_results.csv')
+```
+
+### Original Inputs
+
+```python
+# Access original data if needed
+portfolio = result.portfolio_returns
+benchmark = result.benchmark_returns
+period_effects = result.effects
+```
+
+## Practical Examples
+
+### Example 1: Identifying Best Contributors
+
+```python
+# Find the attribution source that contributed most
+best = result.linked_effects.idxmax()
+best_value = result.linked_effects.max()
+
+print(f"Best contributor: {best} ({best_value:.2%})")
+
+# Find the worst contributor
+worst = result.linked_effects.idxmin()
+worst_value = result.linked_effects.min()
+
+print(f"Worst contributor: {worst} ({worst_value:.2%})")
+```
+
+### Example 2: Relative Contribution Analysis
+
+```python
+# Calculate each effect as % of total excess
+cumulative_excess = (1 + result.portfolio_returns).prod() - \
+                   (1 + result.benchmark_returns).prod() - 1
+
+for effect_name in result.effect_columns:
+    pct = result[effect_name] / cumulative_excess * 100
+    print(f"{effect_name}: {result[effect_name]:.4%} ({pct:.1f}% of total)")
+```
+
+### Example 3: Comparing Period vs Linked Effects
+
+```python
+# Compare raw sums to linked effects
+for effect in result.effect_columns:
+    period_sum = result.effects[effect].sum()
+    linked_value = result[effect]
+    adjustment = ((linked_value / period_sum) - 1) * 100
+    
+    print(f"{effect}:")
+    print(f"  Period sum:    {period_sum:.6f}")
+    print(f"  Linked effect: {linked_value:.6f}")
+    print(f"  Adjustment:    {adjustment:+.2f}%")
+    print()
+```
+
+### Example 4: Visualizing Results
+
+```python
+import matplotlib.pyplot as plt
+
+# Create bar chart of linked effects
+fig, ax = plt.subplots(figsize=(10, 6))
+result.linked_effects.plot(kind='bar', ax=ax)
+ax.set_title(f'Linked Attribution Effects (k={result.k_factor:.4f})')
+ax.set_ylabel('Excess Return Contribution')
+ax.set_xlabel('Attribution Source')
+ax.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
+plt.tight_layout()
+plt.show()
+```
+
+## Common Questions
+
+### Why don't linked effects equal the sum of period effects?
+
+Because returns **compound geometrically**, not arithmetically. The Carino method adjusts for this compounding via the k-factor.
+
+### When is k-factor exactly 1.0?
+
+In three cases:
+1. Single-period attribution (no linking needed)
+2. Cumulative excess return is zero
+3. Special case where arithmetic and geometric returns naturally align
+
+### Can linked effects be negative?
+
+Yes! A negative linked effect means that attribution source **detracted** from performance over the period.
+
+### What if k-factor is very large (e.g., > 2)?
+
+This suggests **extreme volatility** in excess returns. Consider reviewing the data for errors or outliers. See [Limitations](/guides/limitations) for cases where Carino may not be appropriate.
+
+## Next Steps
+
+- Return to [Basic Usage](/guides/basic-usage) for fundamental patterns
+- Learn about [Effect Validation](/guides/validation) to ensure data quality
+- Review [Limitations](/guides/limitations) to understand when interpretation may be challenging

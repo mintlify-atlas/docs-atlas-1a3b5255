@@ -1,0 +1,341 @@
+---
+title: 'Exceptions'
+description: 'Custom exceptions for attribution error handling'
+---
+
+## Overview
+
+Attriblink defines a hierarchy of custom exceptions for handling various error conditions during attribution linking. All exceptions inherit from the base `AttributionError` class.
+
+## Exception Hierarchy
+
+```
+AttributionError (base)
+├── InvalidEffectsError
+├── InvalidReturnsError
+├── AlignmentError
+├── InvalidMethodError
+├── ZeroExcessReturnError
+└── EffectsSumMismatchError
+```
+
+## Exceptions
+
+### AttributionError
+
+```python
+class AttributionError(Exception)
+```
+
+Base exception for all attribution-related errors. You can catch this exception to handle any attriblink-specific error.
+
+```python
+from attriblink import link, AttributionError
+
+try:
+    result = link(effects, portfolio, benchmark)
+except AttributionError as e:
+    print(f"Attribution error occurred: {e}")
+```
+
+### InvalidEffectsError
+
+```python
+class InvalidEffectsError(AttributionError)
+```
+
+Raised when the effects DataFrame is invalid.
+
+**Common causes:**
+- Effects is not a pandas DataFrame
+- Effects DataFrame is empty
+- Effects contains non-numeric data
+- Effects contains only NaN values
+
+```python
+import pandas as pd
+from attriblink import link, InvalidEffectsError
+
+try:
+    # Invalid: empty DataFrame
+    empty_effects = pd.DataFrame()
+    result = link(empty_effects, portfolio, benchmark)
+except InvalidEffectsError as e:
+    print(f"Invalid effects: {e}")
+    # Handle by checking effects data before linking
+```
+
+### InvalidReturnsError
+
+```python
+class InvalidReturnsError(AttributionError)
+```
+
+Raised when a return series is invalid.
+
+**Common causes:**
+- Returns is not a pandas Series
+- Returns series is empty
+- Returns contains non-numeric data
+- Returns contains NaN values
+
+```python
+import pandas as pd
+from attriblink import link, InvalidReturnsError
+
+try:
+    # Invalid: contains NaN
+    portfolio = pd.Series([0.02, None, 0.03])
+    result = link(effects, portfolio, benchmark)
+except InvalidReturnsError as e:
+    print(f"Invalid returns: {e}")
+    # Handle by cleaning data first
+    portfolio = portfolio.fillna(0)
+```
+
+### AlignmentError
+
+```python
+class AlignmentError(AttributionError)
+```
+
+Raised when inputs are not properly aligned.
+
+**Common causes:**
+- Effects index doesn't match portfolio returns index
+- Effects index doesn't match benchmark returns index
+- Portfolio and benchmark indices don't match
+- Different lengths of input data
+
+```python
+import pandas as pd
+from attriblink import link, AlignmentError
+
+try:
+    # Misaligned indices
+    portfolio = pd.Series([0.02, 0.03], index=["2024-01", "2024-02"])
+    benchmark = pd.Series([0.015, 0.02], index=["2024-01", "2024-03"])  # Different dates!
+    effects = pd.DataFrame({"allocation": [0.005, 0.008]}, index=portfolio.index)
+    
+    result = link(effects, portfolio, benchmark)
+except AlignmentError as e:
+    print(f"Alignment error: {e}")
+    # Handle by reindexing
+    benchmark = benchmark.reindex(portfolio.index)
+```
+
+### InvalidMethodError
+
+```python
+class InvalidMethodError(AttributionError)
+```
+
+Raised when an invalid or unsupported linking method is specified.
+
+**Common causes:**
+- Method name is misspelled
+- Unsupported method requested
+- Currently only "carino" is supported
+
+```python
+from attriblink import link, InvalidMethodError
+
+try:
+    # Invalid method
+    result = link(effects, portfolio, benchmark, method="frongello")
+except InvalidMethodError as e:
+    print(f"Method error: {e}")
+    # Use a supported method
+    result = link(effects, portfolio, benchmark, method="carino")
+```
+
+### ZeroExcessReturnError
+
+```python
+class ZeroExcessReturnError(AttributionError)
+```
+
+Raised when the excess return is zero or near-zero and cannot be linked.
+
+**Common causes:**
+- Portfolio and benchmark have identical cumulative returns
+- Returns are too small to compute meaningful attribution
+- Numerical precision issues with very small returns
+
+```python
+import pandas as pd
+from attriblink import link, ZeroExcessReturnError
+
+try:
+    # Portfolio and benchmark are identical
+    portfolio = pd.Series([0.02, 0.03])
+    benchmark = pd.Series([0.02, 0.03])  # Same as portfolio!
+    effects = pd.DataFrame({"allocation": [0.0, 0.0]}, index=portfolio.index)
+    
+    result = link(effects, portfolio, benchmark)
+except ZeroExcessReturnError as e:
+    print(f"Zero excess return: {e}")
+    # Cannot perform attribution when portfolio matches benchmark exactly
+    print("No active return to attribute")
+```
+
+### EffectsSumMismatchError
+
+```python
+class EffectsSumMismatchError(AttributionError)
+```
+
+Raised when effects don't sum to excess return per period and `strict=True`.
+
+**Common causes:**
+- Attribution effects are incomplete
+- Missing an attribution component (e.g., interaction effect)
+- Calculation errors in the effects data
+- Rounding errors in effect calculations
+
+```python
+import pandas as pd
+from attriblink import link, EffectsSumMismatchError
+
+try:
+    portfolio = pd.Series([0.02, 0.03])
+    benchmark = pd.Series([0.015, 0.02])
+    # Effects don't sum to excess return (0.005 vs 0.007)
+    effects = pd.DataFrame({"allocation": [0.003, 0.008]}, index=portfolio.index)
+    
+    # Strict mode raises an error
+    result = link(effects, portfolio, benchmark, strict=True)
+except EffectsSumMismatchError as e:
+    print(f"Effects sum mismatch: {e}")
+    # Option 1: Add missing effects
+    # Option 2: Use non-strict mode (issues warning instead)
+    result = link(effects, portfolio, benchmark, strict=False)
+```
+
+## Error Handling Best Practices
+
+### Validate Input Data
+
+```python
+import pandas as pd
+from attriblink import link, AttributionError
+
+def safe_link(effects, portfolio, benchmark):
+    """Safely link attribution with proper validation."""
+    try:
+        # Validate data types
+        if not isinstance(effects, pd.DataFrame):
+            raise ValueError("effects must be a DataFrame")
+        if not isinstance(portfolio, pd.Series):
+            raise ValueError("portfolio must be a Series")
+        if not isinstance(benchmark, pd.Series):
+            raise ValueError("benchmark must be a Series")
+        
+        # Check for missing values
+        if effects.isna().any().any():
+            raise ValueError("effects contains NaN values")
+        if portfolio.isna().any():
+            raise ValueError("portfolio contains NaN values")
+        if benchmark.isna().any():
+            raise ValueError("benchmark contains NaN values")
+        
+        # Attempt linking
+        return link(effects, portfolio, benchmark)
+        
+    except AttributionError as e:
+        print(f"Attribution failed: {e}")
+        return None
+```
+
+### Handle Specific Errors
+
+```python
+from attriblink import (
+    link,
+    AlignmentError,
+    EffectsSumMismatchError,
+    InvalidMethodError,
+    ZeroExcessReturnError
+)
+
+try:
+    result = link(effects, portfolio, benchmark, method="carino", strict=True)
+    
+except AlignmentError:
+    # Reindex to align data
+    benchmark = benchmark.reindex(portfolio.index)
+    effects = effects.reindex(portfolio.index)
+    result = link(effects, portfolio, benchmark)
+    
+except EffectsSumMismatchError:
+    # Use non-strict mode
+    print("Warning: Effects don't sum exactly to excess return")
+    result = link(effects, portfolio, benchmark, strict=False)
+    
+except ZeroExcessReturnError:
+    # Handle zero excess return case
+    print("No active return to attribute")
+    result = None
+    
+except InvalidMethodError:
+    # Fall back to default method
+    print("Using default Carino method")
+    result = link(effects, portfolio, benchmark, method="carino")
+```
+
+### Complete Error Handling Example
+
+```python
+import pandas as pd
+from attriblink import link, AttributionError, AlignmentError, EffectsSumMismatchError
+
+def perform_attribution(effects_df, port_returns, bench_returns):
+    """Perform attribution with comprehensive error handling."""
+    
+    try:
+        # First attempt with strict validation
+        result = link(
+            effects_df, 
+            port_returns, 
+            bench_returns,
+            method="carino",
+            check_effects_sum=True,
+            strict=True
+        )
+        print("Attribution successful!")
+        return result
+        
+    except AlignmentError as e:
+        print(f"Alignment issue detected: {e}")
+        print("Attempting to reindex data...")
+        
+        # Try to fix alignment
+        common_index = port_returns.index.intersection(bench_returns.index)
+        if len(common_index) == 0:
+            raise ValueError("No common dates between portfolio and benchmark")
+        
+        effects_df = effects_df.reindex(common_index)
+        port_returns = port_returns.reindex(common_index)
+        bench_returns = bench_returns.reindex(common_index)
+        
+        return perform_attribution(effects_df, port_returns, bench_returns)
+        
+    except EffectsSumMismatchError as e:
+        print(f"Effects sum mismatch: {e}")
+        print("Retrying with non-strict mode...")
+        
+        # Retry without strict validation
+        result = link(
+            effects_df,
+            port_returns,
+            bench_returns,
+            method="carino",
+            check_effects_sum=True,
+            strict=False
+        )
+        return result
+        
+    except AttributionError as e:
+        print(f"Attribution error: {e}")
+        raise
+```

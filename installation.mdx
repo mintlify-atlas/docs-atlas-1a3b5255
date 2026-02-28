@@ -1,0 +1,105 @@
+---
+title: Installation
+description: Install attriblink and verify your setup
+---
+
+## Requirements
+
+Attriblink requires Python 3.10 or higher. The package supports:
+
+- Python 3.10
+- Python 3.11
+- Python 3.12+
+
+## Install from PyPI
+
+Install attriblink using pip:
+
+<CodeGroup>
+```bash pip
+pip install attriblink
+```
+
+```bash uv (recommended)
+uv pip install attriblink
+```
+</CodeGroup>
+
+## Dependencies
+
+Attriblink automatically installs the following core dependencies:
+
+- **numpy** (>= 1.26.0) - Numerical computations
+- **pandas** (>= 2.0.0) - Time series data handling
+
+<Note>
+No additional configuration is needed. The package works out of the box with these dependencies.
+</Note>
+
+## Optional Dependencies
+
+For development and testing, you can install optional dependencies:
+
+```bash
+pip install attriblink[dev]
+```
+
+This includes:
+- pytest (>= 9.0.2) - Testing framework
+- pytest-cov (>= 7.0.0) - Code coverage reporting
+- build (>= 1.0.0) - Package building tools
+
+## Verify Installation
+
+Confirm attriblink is installed correctly:
+
+```python
+import attriblink
+
+print(f"attriblink version: {attriblink.__version__}")
+print(f"Available: {attriblink.__all__}")
+```
+
+You should see output similar to:
+
+```
+attriblink version: 0.2.0
+Available: ['link', 'AttributionResult', 'AttributionError', 'AlignmentError', ...]
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Python version too old">
+    If you see an error about Python version compatibility, ensure you're using Python 3.10 or higher:
+    
+    ```bash
+    python --version
+    ```
+    
+    If your version is older, upgrade Python or use a version manager like `pyenv` or `conda`.
+  </Accordion>
+  
+  <Accordion title="Pandas or numpy import errors">
+    If you encounter import errors for pandas or numpy, ensure they meet minimum version requirements:
+    
+    ```bash
+    pip install --upgrade pandas>=2.0.0 numpy>=1.26.0
+    ```
+  </Accordion>
+  
+  <Accordion title="Installation fails">
+    Try upgrading pip and installing again:
+    
+    ```bash
+    pip install --upgrade pip
+    pip install attriblink
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<Card title="Quick Start" icon="rocket" href="/quickstart">
+  Follow the quick start guide to link your first attribution effects
+</Card>

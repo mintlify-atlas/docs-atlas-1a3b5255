@@ -1,0 +1,263 @@
+---
+title: Basic Usage
+description: Learn how to use attriblink for multi-period attribution linking
+---
+
+## Overview
+
+This guide covers the fundamental patterns for using attriblink to link attribution effects across multiple periods using the Carino method.
+
+## Quick Start
+
+The basic workflow involves three steps:
+
+1. **Prepare your data** - Portfolio returns, benchmark returns, and attribution effects
+2. **Call the `link()` function** - Apply the Carino linking method
+3. **Access the results** - Use the `AttributionResult` object to view linked effects
+
+## Setting Up Data
+
+### Portfolio and Benchmark Returns
+
+Returns should be provided as pandas Series with aligned indices:
+
+```python
+import pandas as pd
+from attriblink import link
+
+# Quarterly portfolio and benchmark returns
+portfolio_returns = pd.Series(
+    [0.025, 0.035, -0.012, 0.048],
+    index=pd.date_range("2025-01-01", periods=4, freq="QE")
+)
+benchmark_returns = pd.Series(
+    [0.018, 0.028, -0.015, 0.038],
+    index=portfolio_returns.index
+)
+```
+
+<Note>
+Returns should be expressed as decimals (e.g., 0.025 for 2.5%), not percentages.
+</Note>
+
+### Attribution Effects
+
+Effects should be provided as a pandas DataFrame where:
+- Each **column** represents an attribution source (allocation, selection, interaction, etc.)
+- Each **row** represents a time period
+- The **index** must align with your return series
+
+```python
+# Attribution effects from Brinson-Fachler
+effects = pd.DataFrame({
+    "allocation":    [0.005, 0.006, 0.002, 0.008],
+    "selection":     [0.003, 0.002, -0.001, 0.004],
+    "interaction":   [0.001, 0.001, 0.000, 0.002]
+}, index=portfolio_returns.index)
+```
+
+<Warning>
+By default, attriblink validates that effects sum to excess return for each period. See the [Validation](/guides/validation) guide for details.
+</Warning>
+
+## Calling the `link()` Function
+
+The `link()` function performs the Carino attribution linking:
+
+```python
+result = link(effects, portfolio_returns, benchmark_returns)
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `effects` | `pd.DataFrame` | Required | Attribution effects (columns = effect types, rows = periods) |
+| `portfolio_returns` | `pd.Series` | Required | Portfolio returns for each period |
+| `benchmark_returns` | `pd.Series` | Required | Benchmark returns for each period |
+| `method` | `str` | `"carino"` | Linking method (currently only "carino" supported) |
+| `check_effects_sum` | `bool` | `True` | Validate that effects sum to excess return |
+| `strict` | `bool` | `False` | Raise error on validation failure (vs warning) |
+
+## Accessing Results
+
+The `link()` function returns an `AttributionResult` object with several ways to access the results:
+
+### Display Summary
+
+```python
+print(result.summary())
+```
+
+Output:
+```
+Attribution Summary (Carino Method)
+==================================================================
+
+             Portfolio Benchmark     Active allocation selection interaction
+------------------------------------------------------------------
+Mar 2025        0.0250     0.0180     0.0070     0.0050     0.0030     0.0010
+Jun 2025        0.0350     0.0280     0.0070     0.0060     0.0020     0.0010
+Sep 2025       -0.0120    -0.0150     0.0030     0.0020    -0.0010     0.0000
+Dec 2025        0.0480     0.0380     0.0100     0.0080     0.0040     0.0020
+Total           0.1012     0.0746     0.0266     0.0210     0.0080     0.0040
+
+Smoothing Factor (k): 1.0123
+Sum Check: ✓
+```
+
+### Access Linked Effects
+
+Get linked effects as a pandas Series:
+
+```python
+print(result.linked_effects)
+# allocation      0.0210
+# selection       0.0080
+# interaction     0.0040
+# dtype: float64
+```
+
+Access individual effects using dictionary-like syntax:
+
+```python
+print(f"Allocation: {result['allocation']:.4%}")   # 2.10%
+print(f"Selection:  {result['selection']:.4%}")    # 0.80%
+```
+
+### Get the k-Factor
+
+```python
+print(f"k-factor: {result.k_factor:.4f}")  # 1.0123
+```
+
+The k-factor indicates how effects were scaled:
+- **k > 1**: Effects scaled up (volatile excess returns)
+- **k < 1**: Effects scaled down (consistent excess returns)
+- **k = 1**: No scaling needed
+
+See [Interpreting Results](/guides/interpreting-results) for more details.
+
+### Access Full Data
+
+Get a complete DataFrame with period-by-period and total values:
+
+```python
+print(result.data)
+```
+
+### Additional Properties
+
+```python
+# Date range
+start, end = result.date_range
+print(f"Period: {start} to {end}")
+
+# Number of periods
+print(f"Periods: {result.num_periods}")  # 4
+
+# Effect column names
+print(f"Effects: {result.effect_columns}")  # ['allocation', 'selection', 'interaction']
+
+# Original inputs (if needed)
+print(result.portfolio_returns)
+print(result.benchmark_returns)
+print(result.effects)
+```
+
+## Common Workflows
+
+### Monthly Attribution for a Year
+
+```python
+import pandas as pd
+from attriblink import link
+
+# 12 months of data
+dates = pd.date_range("2024-01-01", periods=12, freq="ME")
+
+portfolio = pd.Series([
+    0.02, 0.03, 0.015, 0.025, 0.01, 0.035,
+    0.022, 0.018, 0.012, 0.028, 0.015, 0.032
+], index=dates)
+
+benchmark = pd.Series([
+    0.015, 0.025, 0.01, 0.02, 0.008, 0.028,
+    0.017, 0.013, 0.008, 0.023, 0.012, 0.027
+], index=dates)
+
+effects = pd.DataFrame({
+    "allocation": [0.003, 0.004, 0.002, 0.003, 0.001, 0.005,
+                  0.003, 0.003, 0.002, 0.003, 0.002, 0.004],
+    "selection":  [0.002, 0.001, 0.003, 0.002, 0.001, 0.002,
+                  0.002, 0.002, 0.002, 0.002, 0.001, 0.001]
+}, index=dates)
+
+result = link(effects, portfolio, benchmark)
+print(result.summary())
+```
+
+### Multiple Attribution Sources
+
+```python
+# Extended attribution model with multiple effects
+effects = pd.DataFrame({
+    "country_allocation":    [0.003, 0.004, 0.002, 0.003],
+    "currency_effect":      [0.001, 0.002, 0.001, 0.002],
+    "sector_allocation":    [0.002, 0.001, 0.001, 0.002],
+    "security_selection":   [0.004, 0.003, 0.002, 0.003],
+    "interaction":          [0.001, 0.001, 0.000, 0.001]
+}, index=portfolio_returns.index)
+
+result = link(effects, portfolio_returns, benchmark_returns)
+
+# Iterate over all effects
+for effect_name in result.effect_columns:
+    print(f"{effect_name}: {result[effect_name]:.4%}")
+```
+
+### Export Results
+
+```python
+# Export to CSV
+result.data.to_csv("attribution_results.csv")
+
+# Export linked effects only
+result.linked_effects.to_csv("linked_effects.csv")
+
+# Convert to dictionary for JSON export
+import json
+results_dict = {
+    "linked_effects": result.linked_effects.to_dict(),
+    "k_factor": result.k_factor,
+    "date_range": result.date_range,
+    "num_periods": result.num_periods
+}
+with open("results.json", "w") as f:
+    json.dump(results_dict, f, indent=2)
+```
+
+## Verify Additivity
+
+One of the key benefits of the Carino method is that linked effects always sum to the cumulative excess return:
+
+```python
+# Calculate cumulative excess return
+total_portfolio = (1 + portfolio_returns).prod() - 1
+total_benchmark = (1 + benchmark_returns).prod() - 1
+cumulative_excess = total_portfolio - total_benchmark
+
+# Sum of linked effects
+linked_sum = result.linked_effects.sum()
+
+# These should match (within numerical precision)
+print(f"Sum of linked effects:     {linked_sum:.6f}")
+print(f"Cumulative excess return:  {cumulative_excess:.6f}")
+print(f"Match: {abs(linked_sum - cumulative_excess) < 1e-10}")
+```
+
+## Next Steps
+
+- Learn about [Effect Validation](/guides/validation) to understand when and why to validate effects
+- Read [Interpreting Results](/guides/interpreting-results) for detailed guidance on the k-factor and linked effects
+- Review [Limitations](/guides/limitations) to understand when NOT to use the Carino method

@@ -1,0 +1,167 @@
+---
+title: 'link()'
+description: 'Link attribution effects across multiple periods'
+---
+
+## Function Signature
+
+```python
+def link(
+    effects: pd.DataFrame,
+    portfolio_returns: pd.Series,
+    benchmark_returns: pd.Series,
+    method: str = "carino",
+    check_effects_sum: bool = True,
+    strict: bool = False,
+) -> AttributionResult
+```
+
+## Description
+
+This function applies a linking method to convert period-by-period attribution effects into linked effects that sum exactly to the cumulative excess return. The linking process ensures that attribution effects are properly compounded across multiple periods, maintaining mathematical consistency.
+
+## Parameters
+
+<ParamField path="effects" type="pd.DataFrame" required>
+  DataFrame where each column is an attribution effect (e.g., allocation, selection, interaction). Each row represents a time period. The index must align with the return series.
+</ParamField>
+
+<ParamField path="portfolio_returns" type="pd.Series" required>
+  Series of portfolio returns for each period. The index must align with the effects DataFrame.
+</ParamField>
+
+<ParamField path="benchmark_returns" type="pd.Series" required>
+  Series of benchmark returns for each period. The index must align with the effects DataFrame.
+</ParamField>
+
+<ParamField path="method" type="str" default="carino">
+  Linking method to use. Currently only "carino" is supported.
+</ParamField>
+
+<ParamField path="check_effects_sum" type="bool" default="True">
+  If True, validates that period-by-period effects sum to period-by-period excess returns.
+</ParamField>
+
+<ParamField path="strict" type="bool" default="False">
+  If True and `check_effects_sum` is True, raises an error when effects don't sum to excess. If False, issues a warning but continues.
+</ParamField>
+
+## Returns
+
+<ResponseField name="result" type="AttributionResult">
+  An object containing:
+  - `.linked_effects`: Series of linked effects
+  - `.data`: DataFrame with all attribution data (period values, totals, linked)
+  - `.summary()`: Print a formatted summary table
+  - `.k_factor`: The Carino k-factor used
+  - `.date_range`: Tuple of (start_date, end_date)
+  - `.num_periods`: Number of periods
+  - `.effect_columns`: List of effect column names
+  - Access linked effects via: `result['effect_name']`
+</ResponseField>
+
+## Raises
+
+<ResponseField name="InvalidMethodError" type="exception">
+  Raised if an unsupported method is specified.
+</ResponseField>
+
+<ResponseField name="AttributionError" type="exception">
+  Raised if inputs are invalid or misaligned.
+</ResponseField>
+
+<ResponseField name="EffectsSumMismatchError" type="exception">
+  Raised if effects don't sum to excess return and `strict=True`.
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```python
+import pandas as pd
+from attriblink import link
+
+# Create sample data
+portfolio = pd.Series(
+    [0.02, 0.03], 
+    index=pd.date_range("2024-01-01", periods=2, freq="ME")
+)
+benchmark = pd.Series(
+    [0.015, 0.02], 
+    index=portfolio.index
+)
+effects = pd.DataFrame({
+    "allocation": [0.005, 0.008],
+    "selection": [0.002, 0.005]
+}, index=portfolio.index)
+
+# Link the attribution effects
+result = link(effects, portfolio, benchmark, method="carino")
+print(result.summary())
+```
+
+### Accessing Results
+
+```python
+# Access linked effects by name
+allocation_effect = result['allocation']
+selection_effect = result['selection']
+
+# Get the full data DataFrame
+data = result.data
+
+# Get specific properties
+print(f"K-factor: {result.k_factor}")
+print(f"Date range: {result.date_range}")
+print(f"Number of periods: {result.num_periods}")
+```
+
+### With Validation Options
+
+```python
+# Disable effects sum checking
+result = link(
+    effects, 
+    portfolio, 
+    benchmark,
+    check_effects_sum=False
+)
+
+# Enable strict validation (raises error on mismatch)
+result = link(
+    effects, 
+    portfolio, 
+    benchmark,
+    check_effects_sum=True,
+    strict=True
+)
+```
+
+### Multiple Effects
+
+```python
+import pandas as pd
+from attriblink import link
+
+# Create data with multiple attribution effects
+portfolio = pd.Series(
+    [0.025, 0.032, -0.015], 
+    index=pd.date_range("2024-01-01", periods=3, freq="ME")
+)
+benchmark = pd.Series(
+    [0.020, 0.025, -0.010], 
+    index=portfolio.index
+)
+effects = pd.DataFrame({
+    "allocation": [0.003, 0.005, -0.002],
+    "selection": [0.002, 0.002, -0.003],
+    "interaction": [0.0, 0.0, 0.0]
+}, index=portfolio.index)
+
+result = link(effects, portfolio, benchmark)
+
+# Iterate over effect names
+for effect_name in result:
+    print(f"{effect_name}: {result[effect_name]:.4f}")
+```

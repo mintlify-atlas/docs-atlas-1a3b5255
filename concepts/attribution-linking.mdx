@@ -1,0 +1,194 @@
+---
+title: Attribution Linking
+description: Understanding the multi-period attribution linking problem and why linking methods are necessary
+---
+
+## The Attribution Linking Problem
+
+When performing multi-period performance attribution, a fundamental challenge arises: **arithmetic attribution effects do not naturally compound**. If you simply sum period-by-period allocation, selection, and interaction effects, the total will not equal the cumulative excess return between portfolio and benchmark.
+
+This violates the fundamental **additivity principle**: the sum of all attribution effects must equal the total excess return.
+
+## Multi-Period Attribution
+
+Multi-period attribution analyzes performance across multiple time periods (e.g., monthly, quarterly, annually). The goal is to understand how different factors contributed to the portfolio's performance relative to a benchmark over the entire period.
+
+### The Challenge
+
+Consider a simple example with quarterly attribution:
+
+```python
+import pandas as pd
+
+# Quarterly portfolio and benchmark returns
+portfolio_returns = pd.Series([0.025, 0.035, -0.012, 0.048])
+benchmark_returns = pd.Series([0.018, 0.028, -0.015, 0.038])
+
+# Attribution effects from Brinson-Fachler
+effects = pd.DataFrame({
+    "allocation": [0.005, 0.006, 0.002, 0.008],
+    "selection":  [0.003, 0.002, -0.001, 0.004],
+})
+
+# Period-by-period excess returns
+excess = portfolio_returns - benchmark_returns
+print("Period excess:", excess.values)
+print("Sum of period excess:", excess.sum())
+
+# Geometric cumulative returns
+cum_portfolio = (1 + portfolio_returns).prod() - 1
+cum_benchmark = (1 + benchmark_returns).prod() - 1
+cum_excess = cum_portfolio - cum_benchmark
+
+print("Cumulative excess (geometric):", cum_excess)
+print("\nArithmetic sum ≠ Geometric excess!")
+```
+
+The arithmetic sum of period-by-period excess returns does **not equal** the geometric cumulative excess return.
+
+## Why Arithmetic Effects Don't Compound
+
+Arithmetic attribution effects are additive within a single period:
+
+$$\text{Allocation}_t + \text{Selection}_t + \text{Interaction}_t = r_{p,t} - r_{b,t}$$
+
+But when linking across periods, we need **geometric compounding**:
+
+$$R_p = \prod_{t=1}^{n}(1 + r_{p,t}) - 1$$
+$$R_b = \prod_{t=1}^{n}(1 + r_{b,t}) - 1$$
+$$CER = R_p - R_b$$
+
+Simply summing the arithmetic effects across periods will not match the geometric cumulative excess return (CER).
+
+<Note>
+Geometric returns account for compounding effects - gains and losses on previous gains and losses. Arithmetic sums ignore this compounding, leading to a mismatch.
+</Note>
+
+## The Additivity Principle Requirement
+
+The additivity principle states that:
+
+$$\sum_{j} \text{Effect}_{linked,j} = CER$$
+
+Where:
+- $\text{Effect}_{linked,j}$ is the linked effect for attribution source $j$ (e.g., allocation, selection)
+- $CER$ is the cumulative excess return (geometric)
+
+This ensures that:
+1. **Consistency**: The attribution analysis matches actual portfolio performance
+2. **Completeness**: All performance is explained - nothing is lost or double-counted
+3. **Credibility**: Stakeholders can trust the attribution results
+
+<Warning>
+Without proper linking, your attribution effects will not sum to the actual excess return, undermining the credibility of your analysis.
+</Warning>
+
+## How Linking Methods Solve This
+
+Linking methods bridge the gap between **arithmetic** (period-by-period) and **geometric** (cumulative) calculations by applying a scaling factor.
+
+### The Concept
+
+1. **Compute arithmetic effects** for each period using standard attribution models (e.g., Brinson-Fachler)
+2. **Sum effects** across periods for each attribution source
+3. **Apply a scaling factor** that adjusts the sums to match the geometric cumulative excess return
+4. **Preserve relative magnitudes** while ensuring exact additivity
+
+### Available Linking Methods
+
+Several linking methods exist in the literature:
+
+| Method | Key Approach | Best For |
+|--------|--------------|----------|
+| **Carino** | Log-based smoothing with k-factor | General purpose, moderate volatility |
+| **Menchero** | Optimized geometric scaling | High volatility, asymmetric returns |
+| **GRAP** | Geometric attribution | Preserving multiplicative structure |
+| **Frongello** | Period-weighted approach | Currency attribution |
+
+<Info>
+**attriblink** currently implements the Carino method, which is the most widely used linking method in practice due to its simplicity and effectiveness.
+</Info>
+
+## The Carino Approach
+
+The Carino method uses a **k-factor** (smoothing coefficient) to scale all attribution effects proportionally:
+
+$$\text{Effect}_{linked,j} = k \times \sum_{t=1}^{n} \text{Effect}_{j,t}$$
+
+The k-factor is computed as:
+
+$$k = \frac{\ln(1 + CER)}{\sum_{t=1}^{n} \ln(1 + ER_t)}$$
+
+This ensures that the sum of linked effects exactly equals the cumulative excess return, while preserving:
+- The **sign** of each effect (positive contributions remain positive)
+- The **relative magnitude** between effects
+- **Interpretability** (effects are scaled uniformly)
+
+## Example: Before and After Linking
+
+```python
+from attriblink import link
+import pandas as pd
+
+portfolio = pd.Series([0.025, 0.035, -0.012, 0.048])
+benchmark = pd.Series([0.018, 0.028, -0.015, 0.038])
+
+effects = pd.DataFrame({
+    "allocation": [0.005, 0.006, 0.002, 0.008],
+    "selection":  [0.003, 0.002, -0.001, 0.004],
+})
+
+# Before linking: simple sum
+arithmetic_sum = effects.sum(axis=0)
+print("Arithmetic sum (unlinked):")
+print(arithmetic_sum)
+print(f"Total: {arithmetic_sum.sum():.4f}")
+
+# Actual cumulative excess return
+cum_excess = (1 + portfolio).prod() - (1 + benchmark).prod() - 1
+print(f"\nActual cumulative excess: {cum_excess:.4f}")
+print(f"Mismatch: {cum_excess - arithmetic_sum.sum():.4f}")
+
+# After linking: Carino method
+result = link(effects, portfolio, benchmark)
+print("\nLinked effects:")
+print(result.linked_effects)
+print(f"Total: {result.linked_effects.sum():.4f}")
+print(f"k-factor: {result.k_factor:.4f}")
+print("\n✓ Sum of linked effects = Cumulative excess return")
+```
+
+## When Linking is Necessary
+
+<Info>
+Linking is **required** when:
+- Analyzing performance across **2 or more periods**
+- Reporting attribution results to stakeholders who expect additivity
+- Comparing attribution effects to cumulative returns
+- Building performance dashboards or reports
+</Info>
+
+Linking is **not needed** when:
+- Analyzing a **single period** (arithmetic = geometric)
+- Working exclusively with geometric attribution models (rare)
+- Focusing on period-by-period trends without cumulative totals
+
+## Mathematical Intuition
+
+The linking problem arises from the difference between arithmetic and geometric means:
+
+- **Arithmetic mean**: $\frac{1}{n}\sum_{t=1}^{n} r_t$
+- **Geometric mean**: $\left(\prod_{t=1}^{n}(1 + r_t)\right)^{1/n} - 1$
+
+For non-constant returns, the geometric mean is always **less than or equal to** the arithmetic mean (AM-GM inequality). Linking methods correct for this discrepancy.
+
+## Further Reading
+
+- [Carino Method](/concepts/carino-method) - Detailed explanation of the Carino linking formula
+- [K-Factor Interpretation](/concepts/k-factor) - Understanding what the k-factor tells you about returns
+
+## References
+
+- Carino, D. R. (1999). "Combining Attribution Effects Over Time." *The Journal of Performance Measurement*, Summer, pp. 5-14.
+- Bacon, C. (2004). *Practical Portfolio Performance Measurement and Attribution*. Wiley, pp. 191-193.
+- Christopherson, J. A., Carino, D. R., & Ferson, W. E. (2009). *Portfolio Performance Measurement and Benchmarking*. McGraw-Hill, Chapter 19.

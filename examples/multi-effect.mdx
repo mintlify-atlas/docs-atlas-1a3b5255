@@ -1,0 +1,161 @@
+---
+title: 'Multiple Attribution Effects'
+description: 'Example with country allocation, sector allocation, security selection, currency, and interaction effects'
+---
+
+This example demonstrates how to handle complex attribution models with multiple effect sources. We'll work with monthly data and five different attribution effects.
+
+## Complete Example
+
+```python
+import pandas as pd
+from attriblink import link
+
+# Monthly data
+portfolio = pd.Series(
+    [0.02, 0.03, 0.015, 0.025, 0.01, 0.035],
+    index=pd.date_range("2024-01-01", periods=6, freq="ME")
+)
+benchmark = pd.Series(
+    [0.015, 0.025, 0.01, 0.02, 0.008, 0.028],
+    index=portfolio.index
+)
+
+# Extended attribution model with multiple effects
+effects = pd.DataFrame({
+    "country_allocation":    [0.003, 0.004, 0.002, 0.003, 0.001, 0.005],
+    "currency_effect":       [0.001, 0.002, 0.001, 0.002, 0.001, 0.001],
+    "sector_allocation":     [0.002, 0.001, 0.001, 0.002, 0.001, 0.003],
+    "security_selection":    [0.004, 0.003, 0.002, 0.003, 0.002, 0.004],
+    "interaction":           [0.001, 0.001, 0.000, 0.001, 0.000, 0.001]
+}, index=portfolio.index)
+
+result = link(effects, portfolio, benchmark)
+
+# Access individual linked effects
+for effect_name in result.effect_columns:
+    print(f"{effect_name}: {result[effect_name]:.4%}")
+
+# Full summary
+print(result.summary())
+```
+
+## Understanding Multi-Level Attribution
+
+This example represents a typical global equity portfolio with multiple layers of attribution:
+
+### Attribution Hierarchy
+
+1. **Country Allocation**: Return impact from overweight/underweight positions in different countries
+2. **Currency Effect**: Return impact from currency movements (hedged vs unhedged positions)
+3. **Sector Allocation**: Return impact from sector positioning within each country
+4. **Security Selection**: Return impact from individual stock picks within sectors
+5. **Interaction**: Cross-effects between allocation and selection decisions
+
+### Monthly Return Pattern
+
+| Month | Portfolio | Benchmark | Excess |
+|-------|-----------|-----------|--------|
+| Jan   | 2.0%      | 1.5%      | 0.5%   |
+| Feb   | 3.0%      | 2.5%      | 0.5%   |
+| Mar   | 1.5%      | 1.0%      | 0.5%   |
+| Apr   | 2.5%      | 2.0%      | 0.5%   |
+| May   | 1.0%      | 0.8%      | 0.2%   |
+| Jun   | 3.5%      | 2.8%      | 0.7%   |
+
+## Expected Output
+
+```
+country_allocation: 1.1043%
+currency_effect: 0.4893%
+sector_allocation: 0.6138%
+security_selection: 1.1043%
+interaction: 0.2451%
+
+Attribution Summary
+===================
+Periods: 6
+Date Range: 2024-01-01 to 2024-06-30
+k-factor: 1.0122
+
+Linked Effects:
+  country_allocation:    1.1043%
+  currency_effect:       0.4893%
+  sector_allocation:     0.6138%
+  security_selection:    1.1043%
+  interaction:           0.2451%
+
+Total Excess Return: 3.5568%
+```
+
+## Interpreting the Results
+
+### Effect Contributions
+
+The linked effects reveal which decisions drove performance:
+
+- **Country allocation** (1.10%) and **security selection** (1.10%) were the top contributors
+- **Currency effects** (0.49%) and **sector allocation** (0.61%) made moderate contributions
+- **Interaction effects** (0.25%) captured cross-term impacts
+
+### K-Factor = 1.0122
+
+The k-factor of ~1.01 indicates:
+- Very consistent excess returns across the 6-month period
+- Minimal scaling needed to achieve geometric additivity
+- Low volatility in month-to-month excess performance
+
+This makes sense given that excess returns were 0.5% in 4 out of 6 months.
+
+### Additivity Check
+
+The sum of all linked effects:
+```
+1.1043% + 0.4893% + 0.6138% + 1.1043% + 0.2451% = 3.5568%
+```
+
+This equals the geometric cumulative excess return:
+```
+(1.02 × 1.03 × 1.015 × 1.025 × 1.01 × 1.035) - 
+(1.015 × 1.025 × 1.01 × 1.02 × 1.008 × 1.028) - 1 = 3.5568%
+```
+
+## Working with Result Data
+
+### Accessing Effect Columns
+
+```python
+# List all effect names
+print(result.effect_columns)
+# ['country_allocation', 'currency_effect', 'sector_allocation', 
+#  'security_selection', 'interaction']
+
+# Get the top contributor
+top_effect = result.linked_effects.idxmax()
+print(f"Best contributor: {top_effect}")
+# Best contributor: country_allocation
+```
+
+### Full Period Breakdown
+
+```python
+# View period-by-period data
+print(result.data)
+```
+
+This shows the raw (unlinked) effects for each period plus the linked totals.
+
+## Common Use Cases
+
+This multi-effect attribution structure is typical for:
+
+- **Global equity portfolios**: Country, sector, and security effects
+- **Multi-asset portfolios**: Asset class allocation, security selection within asset classes
+- **Fixed income portfolios**: Duration, credit, sector, security effects
+- **Alternative portfolios**: Strategy allocation, manager selection, tactical allocation
+
+## Next Steps
+
+- See [Quarterly Attribution](/examples/quarterly-attribution) for a simpler example
+- See [Validation Handling](/examples/validation-handling) for error handling
+- Learn about [effect validation](/guides/validation) to ensure data quality

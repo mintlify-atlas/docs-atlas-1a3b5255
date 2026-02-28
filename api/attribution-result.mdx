@@ -1,0 +1,271 @@
+---
+title: 'AttributionResult'
+description: 'Result object containing linked attribution effects and summary information'
+---
+
+## Class Overview
+
+The `AttributionResult` class provides a comprehensive return type for the `link()` function. It contains linked attribution effects, compounded returns, and provides convenient access methods for analyzing the results.
+
+## Properties
+
+### linked_effects
+
+<ResponseField name="linked_effects" type="pd.Series">
+  Series of linked attribution effects. Each element represents the linked effect for one attribution source (e.g., allocation, selection).
+</ResponseField>
+
+```python
+result = link(effects, portfolio, benchmark)
+linked = result.linked_effects
+print(linked)
+# Output:
+# allocation    0.0123
+# selection     0.0045
+# dtype: float64
+```
+
+### data
+
+<ResponseField name="data" type="pd.DataFrame">
+  Full DataFrame with all attribution data. Each row represents a period, with a 'Total' row at the bottom containing geometric linked returns. Columns are ordered as: Portfolio Return, Benchmark Return, Active Return, followed by each effect.
+</ResponseField>
+
+```python
+data = result.data
+print(data)
+#              Portfolio Return  Benchmark Return  Active Return  allocation  selection
+# 2024-01-31            0.0200            0.0150         0.0050      0.0050     0.0020
+# 2024-02-29            0.0300            0.0200         0.0100      0.0080     0.0050
+# Total                 0.0506            0.0352         0.0154      0.0132     0.0070
+```
+
+### k_factor
+
+<ResponseField name="k_factor" type="float">
+  The Carino k-factor used for linking. This smoothing factor ensures that linked effects sum exactly to the cumulative excess return.
+</ResponseField>
+
+```python
+k = result.k_factor
+print(f"K-factor: {k:.6f}")
+```
+
+### effects
+
+<ResponseField name="effects" type="pd.DataFrame">
+  The original effects DataFrame passed to the `link()` function.
+</ResponseField>
+
+```python
+original_effects = result.effects
+```
+
+### portfolio_returns
+
+<ResponseField name="portfolio_returns" type="pd.Series">
+  The original portfolio returns series passed to the `link()` function.
+</ResponseField>
+
+```python
+portfolio = result.portfolio_returns
+```
+
+### benchmark_returns
+
+<ResponseField name="benchmark_returns" type="pd.Series">
+  The original benchmark returns series passed to the `link()` function.
+</ResponseField>
+
+```python
+benchmark = result.benchmark_returns
+```
+
+### date_range
+
+<ResponseField name="date_range" type="tuple[str, str]">
+  Tuple containing the start and end dates from the index as strings.
+</ResponseField>
+
+```python
+start, end = result.date_range
+print(f"Analysis period: {start} to {end}")
+```
+
+### num_periods
+
+<ResponseField name="num_periods" type="int">
+  The number of periods in the analysis.
+</ResponseField>
+
+```python
+periods = result.num_periods
+print(f"Analyzed {periods} periods")
+```
+
+### effect_columns
+
+<ResponseField name="effect_columns" type="list[str]">
+  List of effect column names (e.g., ['allocation', 'selection', 'interaction']).
+</ResponseField>
+
+```python
+effects = result.effect_columns
+print(f"Attribution effects: {effects}")
+```
+
+## Methods
+
+### summary()
+
+```python
+def summary() -> str
+```
+
+Generate a formatted summary table of the attribution results.
+
+<ResponseField name="return" type="str">
+  Formatted string with the attribution summary table showing:
+  - Each period as a row with Portfolio Return, Benchmark Return, Active Return, and all effects
+  - Total row with geometric linked returns and linked effects
+  - Smoothing factor (k)
+  - Sum check verification
+</ResponseField>
+
+```python
+result = link(effects, portfolio, benchmark)
+print(result.summary())
+
+# Output:
+# Attribution Summary (Carino Method)
+# ========================================
+# 
+#               Portfolio  Benchmark     Active allocation  selection
+# -------------------------------------------------------------
+# Jan 2024         0.0200     0.0150     0.0050     0.0050     0.0020
+# Feb 2024         0.0300     0.0200     0.0100     0.0080     0.0050
+# Total            0.0506     0.0352     0.0154     0.0132     0.0070
+# 
+# Smoothing Factor (k): 1.0234
+# Sum Check: ✓
+```
+
+## Dictionary-like Access
+
+The `AttributionResult` class supports dictionary-like access to linked effects:
+
+### __getitem__(key)
+
+```python
+def __getitem__(key: str) -> float
+```
+
+Access a specific linked effect by name.
+
+```python
+result = link(effects, portfolio, benchmark)
+
+# Access linked effects by name
+allocation = result['allocation']
+selection = result['selection']
+
+print(f"Allocation effect: {allocation:.4f}")
+print(f"Selection effect: {selection:.4f}")
+```
+
+## Iteration
+
+### __iter__()
+
+```python
+def __iter__() -> iter[str]
+```
+
+Iterate over effect column names.
+
+```python
+for effect_name in result:
+    print(f"{effect_name}: {result[effect_name]:.4f}")
+
+# Output:
+# allocation: 0.0132
+# selection: 0.0070
+```
+
+## NumPy Compatibility
+
+### __array__()
+
+```python
+def __array__() -> NDArray[np.float64]
+```
+
+Return linked effects as a NumPy array.
+
+```python
+import numpy as np
+
+result = link(effects, portfolio, benchmark)
+array = np.array(result)
+print(array)
+# Output: array([0.0132, 0.0070])
+```
+
+## String Representations
+
+### __str__()
+
+Returns the formatted summary table (same as calling `summary()`).
+
+```python
+print(result)  # Calls summary()
+```
+
+### __repr__()
+
+Returns a detailed representation with key metrics.
+
+```python
+result
+# Output: AttributionResult(periods=2, effects=2, k_factor=1.0234)
+```
+
+## Complete Example
+
+```python
+import pandas as pd
+from attriblink import link
+
+# Create sample data
+portfolio = pd.Series(
+    [0.02, 0.03, -0.01], 
+    index=pd.date_range("2024-01-01", periods=3, freq="ME")
+)
+benchmark = pd.Series(
+    [0.015, 0.02, -0.005], 
+    index=portfolio.index
+)
+effects = pd.DataFrame({
+    "allocation": [0.003, 0.008, -0.003],
+    "selection": [0.002, 0.002, -0.002]
+}, index=portfolio.index)
+
+# Link effects
+result = link(effects, portfolio, benchmark)
+
+# Access properties
+print(f"Periods: {result.num_periods}")
+print(f"Effects: {result.effect_columns}")
+print(f"Date range: {result.date_range}")
+print(f"K-factor: {result.k_factor:.4f}")
+
+# Access linked effects
+for effect in result:
+    print(f"{effect}: {result[effect]:.4f}")
+
+# Get full data
+print(result.data)
+
+# Print summary
+print(result.summary())
+```

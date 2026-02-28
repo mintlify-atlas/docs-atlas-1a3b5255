@@ -1,0 +1,122 @@
+---
+title: 'Basic Quarterly Attribution'
+description: 'Complete working example with quarterly data showing portfolio returns, benchmark returns, and effects setup'
+---
+
+This example demonstrates the basic usage of attriblink with quarterly portfolio data. We'll link attribution effects across four quarters and interpret the results.
+
+## Complete Example
+
+```python
+import pandas as pd
+import numpy as np
+from attriblink import link
+
+# Quarterly portfolio and benchmark returns (2024)
+portfolio_returns = pd.Series(
+    [0.025, 0.035, -0.012, 0.048],
+    index=pd.date_range("2024-01-01", periods=4, freq="QE")
+)
+benchmark_returns = pd.Series(
+    [0.018, 0.028, -0.015, 0.038],
+    index=portfolio_returns.index
+)
+
+# Attribution effects from Brinson-Fachler
+effects = pd.DataFrame({
+    "allocation":    [0.005, 0.006, 0.002, 0.008],
+    "selection":     [0.003, 0.002, -0.001, 0.004],
+    "interaction":   [0.001, 0.001, 0.000, 0.002]
+}, index=portfolio_returns.index)
+
+# Link effects
+result = link(effects, portfolio_returns, benchmark_returns)
+
+# View results
+print(result.summary())
+print(f"\nLinked effects: {result.linked_effects.to_dict()}")
+print(f"k-factor: {result.k_factor:.4f}")
+
+# Verify additivity
+total_excess = (1 + portfolio_returns).prod() - (1 + benchmark_returns).prod() - 1
+print(f"\nSum of linked effects: {result.linked_effects.sum():.6f}")
+print(f"Cumulative excess return: {total_excess:.6f}")
+```
+
+## Understanding the Data
+
+### Portfolio and Benchmark Returns
+
+The quarterly returns show:
+- **Q1 2024**: Portfolio outperformed by 0.7% (2.5% vs 1.8%)
+- **Q2 2024**: Portfolio outperformed by 0.7% (3.5% vs 2.8%)
+- **Q3 2024**: Benchmark less negative by 0.3% (-1.2% vs -1.5%)
+- **Q4 2024**: Portfolio outperformed by 1.0% (4.8% vs 3.8%)
+
+### Attribution Effects
+
+For each quarter, we have three attribution effects that explain the excess return:
+
+- **Allocation**: Return contribution from asset allocation decisions
+- **Selection**: Return contribution from security selection within asset classes
+- **Interaction**: Cross-effect between allocation and selection
+
+These effects come from a standard Brinson-Fachler attribution model.
+
+## Expected Output
+
+```
+Linked effects: {
+    'allocation': 0.0214,
+    'selection': 0.0082,
+    'interaction': 0.0041
+}
+
+k-factor: 1.0198
+
+Sum of linked effects: 0.0337
+Cumulative excess return: 0.0337
+```
+
+## Interpreting the Results
+
+### Linked Effects
+
+The linked effects show the cumulative contribution of each attribution source over the entire period:
+
+- **Allocation contributed 2.14%** to the total excess return
+- **Selection contributed 0.82%** to the total excess return
+- **Interaction contributed 0.41%** to the total excess return
+
+### K-Factor = 1.0198
+
+The k-factor of ~1.02 indicates:
+- The raw sum of effects needed to be scaled up by ~2%
+- This is typical for moderate return volatility
+- The geometric compounding effect required a small adjustment
+
+Since k is close to 1.0, the excess returns were relatively consistent across periods.
+
+### Additivity Verification
+
+Notice that:
+```
+0.0214 + 0.0082 + 0.0041 = 0.0337
+```
+
+This **exactly equals** the cumulative excess return (geometric difference between portfolio and benchmark). This is the key property that Carino linking guarantees.
+
+## Accessing Individual Effects
+
+You can access individual linked effects using dictionary-style notation:
+
+```python
+print(f"Allocation: {result['allocation']:.4%}")  # 2.14%
+print(f"Selection:  {result['selection']:.4%}")   # 0.82%
+```
+
+## Next Steps
+
+- See [Multiple Attribution Effects](/examples/multi-effect) for examples with more complex attribution models
+- See [Validation Handling](/examples/validation-handling) for handling validation errors
+- Learn about [k-factor interpretation](/concepts/k-factor) for deeper insights

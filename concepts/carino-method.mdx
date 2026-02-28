@@ -1,0 +1,279 @@
+---
+title: Carino Method
+description: Detailed explanation of the Carino multi-period attribution linking method, its mathematical formula, and how it works
+---
+
+## Overview
+
+The Carino method (Carino, 1999) is a widely-used approach for linking multi-period attribution effects. It resolves the non-additivity problem by introducing a **smoothing factor (k-factor)** that scales all attribution effects proportionally.
+
+The method ensures that the sum of linked effects **exactly equals** the geometric cumulative excess return, while preserving the sign and relative magnitude of each effect.
+
+<Info>
+The Carino method is the industry standard for multi-period attribution linking due to its simplicity, interpretability, and robust handling of typical return scenarios.
+</Info>
+
+## Mathematical Formula
+
+### The k-Factor Formula
+
+The core of the Carino method is the k-factor:
+
+$$k = \frac{\ln(1 + CER)}{\sum_{t=1}^{n} \ln(1 + ER_t)}$$
+
+Where:
+- $CER$ = Cumulative Excess Return (geometric) = $R_p - R_b$
+- $R_p$ = Geometric cumulative portfolio return = $\prod_{t=1}^{n}(1 + r_{p,t}) - 1$
+- $R_b$ = Geometric cumulative benchmark return = $\prod_{t=1}^{n}(1 + r_{b,t}) - 1$
+- $ER_t$ = Period excess return = $r_{p,t} - r_{b,t}$
+- $n$ = Number of periods
+
+### Linked Effects Formula
+
+Once the k-factor is computed, each attribution effect is linked:
+
+$$\text{Effect}_{linked,j} = k \times \sum_{t=1}^{n} \text{Effect}_{j,t}$$
+
+Where:
+- $\text{Effect}_{j,t}$ is the attribution effect for source $j$ (e.g., allocation, selection) in period $t$
+- The sum is the arithmetic total across all periods
+- $k$ scales this total to ensure geometric additivity
+
+### The Key Invariant
+
+The Carino method guarantees:
+
+$$\sum_{j} \text{Effect}_{linked,j} = CER$$
+
+This ensures that the sum of all linked attribution effects **exactly equals** the geometric cumulative excess return.
+
+<Note>
+This invariant is the fundamental requirement for valid multi-period attribution - all effects must sum to the total excess return.
+</Note>
+
+## How It Works: Log-Based Smoothing
+
+The Carino method uses **logarithmic transformation** to bridge arithmetic and geometric calculations.
+
+### Why Logarithms?
+
+Logarithms convert multiplicative relationships to additive ones:
+
+$$\ln\left(\prod_{t=1}^{n} (1 + r_t)\right) = \sum_{t=1}^{n} \ln(1 + r_t)$$
+
+This property allows the Carino formula to:
+1. **Convert geometric returns** to a log-additive form
+2. **Compare** the cumulative log return to the sum of period log returns
+3. **Scale** arithmetic effects by the ratio to match geometric reality
+
+### The Smoothing Interpretation
+
+The k-factor can be interpreted as:
+
+$$k = \frac{\text{Log of cumulative excess}}{\text{Sum of logs of period excess}}$$
+
+This ratio:
+- **Captures compounding effects** embedded in geometric returns
+- **Scales uniformly** across all attribution sources
+- **Preserves relative magnitudes** between effects
+
+## Step-by-Step Formula Walkthrough
+
+Let's work through the Carino calculation step-by-step with a concrete example.
+
+### Step 1: Compute Geometric Cumulative Returns
+
+Given quarterly returns:
+
+```python
+portfolio_returns = [0.025, 0.035, -0.012, 0.048]
+benchmark_returns = [0.018, 0.028, -0.015, 0.038]
+```
+
+Compute cumulative returns using geometric compounding:
+
+$$R_p = \prod_{t=1}^{4}(1 + r_{p,t}) - 1 = (1.025)(1.035)(0.988)(1.048) - 1$$
+$$R_p = 1.0997 - 1 = 0.0997 \text{ (9.97%)}$$
+
+$$R_b = \prod_{t=1}^{4}(1 + r_{b,t}) - 1 = (1.018)(1.028)(0.985)(1.038) - 1$$
+$$R_b = 1.0714 - 1 = 0.0714 \text{ (7.14%)}$$
+
+### Step 2: Compute Cumulative Excess Return (CER)
+
+$$CER = R_p - R_b = 0.0997 - 0.0714 = 0.0283 \text{ (2.83%)}$$
+
+### Step 3: Compute Period-by-Period Excess Returns
+
+For each period:
+
+$$ER_t = r_{p,t} - r_{b,t}$$
+
+```
+Period 1: 0.025 - 0.018 = 0.007
+Period 2: 0.035 - 0.028 = 0.007
+Period 3: -0.012 - (-0.015) = 0.003
+Period 4: 0.048 - 0.038 = 0.010
+```
+
+### Step 4: Compute Log-Linked Excess Returns
+
+Apply natural logarithm to each excess return (plus 1):
+
+$$\ln(1 + ER_t)$$
+
+```
+Period 1: ln(1.007) = 0.006972
+Period 2: ln(1.007) = 0.006972
+Period 3: ln(1.003) = 0.002996
+Period 4: ln(1.010) = 0.009950
+```
+
+### Step 5: Sum the Log-Linked Excess Returns
+
+$$S = \sum_{t=1}^{4} \ln(1 + ER_t) = 0.006972 + 0.006972 + 0.002996 + 0.009950$$
+$$S = 0.026890$$
+
+### Step 6: Compute k-Factor
+
+$$k = \frac{\ln(1 + CER)}{S} = \frac{\ln(1.0283)}{0.026890}$$
+$$k = \frac{0.027918}{0.026890} = 1.0382$$
+
+<Info>
+In this example, **k > 1** (1.0382), indicating that the arithmetic sum needs to be scaled **up** by about 3.8% to match the geometric cumulative excess return.
+</Info>
+
+### Step 7: Scale Each Attribution Effect
+
+Given attribution effects:
+
+```python
+effects = pd.DataFrame({
+    "allocation": [0.005, 0.006, 0.002, 0.008],
+    "selection":  [0.003, 0.002, -0.001, 0.004],
+})
+```
+
+Compute arithmetic sums:
+```
+Allocation sum: 0.005 + 0.006 + 0.002 + 0.008 = 0.021
+Selection sum:  0.003 + 0.002 - 0.001 + 0.004 = 0.008
+```
+
+Apply k-factor:
+```
+Linked allocation: 1.0382 × 0.021 = 0.0218
+Linked selection:  1.0382 × 0.008 = 0.0083
+```
+
+Verify additivity:
+```
+Sum of linked effects: 0.0218 + 0.0083 = 0.0301
+CER: 0.0283
+```
+
+<Note>
+In practice, **attriblink** applies a final residual scaling to ensure **exact** additivity, accounting for numerical precision. This is why the sum might not match precisely in hand calculations.
+</Note>
+
+## Code Example
+
+Here's how to compute linked effects using attriblink:
+
+```python
+import pandas as pd
+from attriblink import link
+
+# Quarterly returns
+portfolio = pd.Series([0.025, 0.035, -0.012, 0.048])
+benchmark = pd.Series([0.018, 0.028, -0.015, 0.038])
+
+# Attribution effects
+effects = pd.DataFrame({
+    "allocation": [0.005, 0.006, 0.002, 0.008],
+    "selection":  [0.003, 0.002, -0.001, 0.004],
+})
+
+# Link effects using Carino method
+result = link(effects, portfolio, benchmark)
+
+print("Linked Effects:")
+print(result.linked_effects)
+print(f"\nk-factor: {result.k_factor:.4f}")
+print(f"Cumulative excess return: {result.cumulative_excess_return:.4f}")
+print(f"Sum of linked effects: {result.linked_effects.sum():.4f}")
+
+# Verify invariant
+assert abs(result.linked_effects.sum() - result.cumulative_excess_return) < 1e-10
+print("\n✓ Invariant satisfied: sum of linked effects = CER")
+```
+
+## Mathematical Intuition
+
+The Carino method bridges **arithmetic** (period-by-period) and **geometric** (cumulative) return calculations:
+
+| Approach | Formula | Problem |
+|----------|---------|----------|
+| **Arithmetic linking** | Simply sum period effects | Fails to match geometric excess return |
+| **Geometric linking** | Compound period effects | Mathematically complex, may produce negative effects |
+| **Carino smoothing** | Scale arithmetic effects by $k$ | Preserves sign and relative magnitude while ensuring additivity |
+
+### Why This Works
+
+The logarithmic transformation captures the **compounding effect** that distinguishes geometric from arithmetic returns:
+
+- When returns are **volatile** (positive and negative periods), geometric compounding reduces the cumulative return
+- The k-factor **increases** to compensate (k > 1)
+- When returns are **consistent**, geometric compounding naturally aligns with arithmetic sums
+- The k-factor **decreases** (k < 1)
+
+## Edge Cases
+
+### Single Period
+
+When $n = 1$:
+- Geometric return = Arithmetic return
+- $k = 1$ by definition
+- No linking needed
+
+```python
+# Single period - no linking needed
+result = link(effects.iloc[:1], portfolio.iloc[:1], benchmark.iloc[:1])
+assert result.k_factor == 1.0
+```
+
+### Near-Zero Cumulative Excess
+
+When $CER \approx 0$:
+- The k-factor formula becomes unstable (division by near-zero)
+- **attriblink** sets $k = 1$ automatically
+- Linked effects ≈ arithmetic sums
+
+### Zero Denominator
+
+When $\sum_{t=1}^{n} \ln(1 + ER_t) \approx 0$:
+- Fall back to: $k = \frac{CER}{\sum_{t=1}^{n} ER_t}$
+- If both numerator and denominator are near-zero: $k = 1$
+
+<Warning>
+When cumulative excess return is very small (< 0.1%), the k-factor becomes less meaningful. Consider whether multi-period linking is necessary in such cases.
+</Warning>
+
+## Comparison to Alternative Methods
+
+| Method | Key Difference | When to Use |
+|--------|----------------|-------------|
+| **Carino** | Log-based uniform scaling | General purpose, moderate volatility |
+| **Menchero** | Optimizes for geometric attribution | High volatility, asymmetric distributions |
+| **GRAP** | Fully geometric approach | Preserving multiplicative structure |
+| **Frongello** | Period-weighted adjustments | Currency effects, time-weighted attribution |
+
+## Further Reading
+
+- [K-Factor Interpretation](/concepts/k-factor) - Understanding what the k-factor reveals about return patterns
+- [Attribution Linking](/concepts/attribution-linking) - The fundamental problem Carino solves
+
+## References
+
+- Carino, D. R. (1999). "Combining Attribution Effects Over Time." *The Journal of Performance Measurement*, Summer, pp. 5-14.
+- Christopherson, J. A., Carino, D. R., & Ferson, W. E. (2009). *Portfolio Performance Measurement and Benchmarking*. McGraw-Hill, Chapter 19.
+- Bacon, C. (2004). *Practical Portfolio Performance Measurement and Attribution*. Wiley, pp. 191-193.

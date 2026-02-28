@@ -1,0 +1,235 @@
+---
+title: 'Validation and Error Handling'
+description: 'Examples showing validation warnings, strict mode, and disabled validation with error handling'
+---
+
+This example demonstrates how attriblink validates that period-by-period effects sum to excess returns, and how to handle validation failures.
+
+## Complete Example
+
+```python
+import pandas as pd
+import numpy as np
+from attriblink import link, EffectsSumMismatchError
+import warnings
+
+portfolio = pd.Series([0.02, 0.03], index=pd.date_range("2024-01-01", periods=2, freq="ME"))
+benchmark = pd.Series([0.015, 0.025], index=portfolio.index)
+
+# Effects that DON'T sum to excess return (intentional error)
+effects = pd.DataFrame({
+    "allocation": [0.005, 0.010],  # Should be 0.005, 0.005
+    "selection":  [0.002, 0.003]   # Should be 0.002, 0.002
+}, index=portfolio.index)
+
+# Default: warn but continue
+with warnings.catch_warnings(record=True) as w:
+    warnings.simplefilter("always")
+    result = link(effects, portfolio, benchmark, strict=False)
+    if w:
+        print(f"Warning: {w[0].message}")
+
+# Strict mode: raise error
+try:
+    result = link(effects, portfolio, benchmark, strict=True)
+except EffectsSumMismatchError as e:
+    print(f"Error: {e}")
+
+# Disable validation entirely (use carefully!)
+result = link(effects, portfolio, benchmark, check_effects_sum=False)
+```
+
+## Understanding Effect Validation
+
+### Why Validation Matters
+
+For each period, the sum of attribution effects **must** equal the excess return:
+
+```
+allocation + selection + interaction + ... = portfolio_return - benchmark_return
+```
+
+If this doesn't hold, it indicates:
+- A bug in the attribution calculation
+- Missing attribution effects
+- Incorrect data alignment
+
+### The Validation Error
+
+In our example:
+
+**Period 1 (Jan 2024):**
+- Excess return: 0.02 - 0.015 = 0.005 (0.5%)
+- Effects sum: 0.005 + 0.002 = 0.007 (0.7%)
+- **Mismatch**: 0.007 ≠ 0.005 ✗
+
+**Period 2 (Feb 2024):**
+- Excess return: 0.03 - 0.025 = 0.005 (0.5%)
+- Effects sum: 0.010 + 0.003 = 0.013 (1.3%)
+- **Mismatch**: 0.013 ≠ 0.005 ✗
+
+## Validation Modes
+
+### Mode 1: Default (Warn but Continue)
+
+```python
+result = link(effects, portfolio, benchmark, 
+              check_effects_sum=True, strict=False)
+```
+
+**Behavior:**
+- Validates effects sum to excess
+- Issues `UserWarning` if mismatch detected
+- **Continues** with calculation
+- Returns result with linked effects
+
+**Expected Output:**
+```
+UserWarning: Effects do not sum to excess returns for some periods:
+  Period 2024-01-31: effects sum = 0.007000, excess = 0.005000 (diff = 0.002000)
+  Period 2024-02-29: effects sum = 0.013000, excess = 0.005000 (diff = 0.008000)
+Consider checking your attribution model or use check_effects_sum=False to disable validation.
+```
+
+**When to use:**
+- Exploratory analysis
+- You want to see results despite data issues
+- Legacy data where fixing the source is not possible
+
+### Mode 2: Strict (Raise Error)
+
+```python
+try:
+    result = link(effects, portfolio, benchmark, 
+                  check_effects_sum=True, strict=True)
+except EffectsSumMismatchError as e:
+    print(f"Error: {e}")
+    # Handle the error (fix data, alert user, etc.)
+```
+
+**Behavior:**
+- Validates effects sum to excess
+- **Raises** `EffectsSumMismatchError` if mismatch detected
+- **Stops** execution
+- No result returned
+
+**Expected Output:**
+```
+EffectsSumMismatchError: Effects do not sum to excess returns for some periods:
+  Period 2024-01-31: effects sum = 0.007000, excess = 0.005000 (diff = 0.002000)
+  Period 2024-02-29: effects sum = 0.013000, excess = 0.005000 (diff = 0.008000)
+```
+
+**When to use:**
+- Production systems where data quality is critical
+- Automated pipelines that should fail-fast on bad data
+- When you want to ensure attribution model correctness
+
+### Mode 3: Disabled Validation
+
+```python
+result = link(effects, portfolio, benchmark, 
+              check_effects_sum=False)
+```
+
+**Behavior:**
+- **Skips** validation entirely
+- Proceeds directly to linking
+- Returns result regardless of data quality
+
+**Expected Output:**
+```
+Linked effects computed successfully (validation skipped)
+```
+
+**When to use:**
+- Custom attribution models with non-standard scaling
+- Pre-validated data from external systems
+- Research scenarios where you're testing alternative methodologies
+
+<Warning>
+  Disabling validation means you're responsible for ensuring effects are correctly calculated. Linking invalid data produces meaningless results.
+</Warning>
+
+## Handling Validation in Production
+
+### Recommended Pattern
+
+```python
+import logging
+from attriblink import link, EffectsSumMismatchError
+
+logger = logging.getLogger(__name__)
+
+def run_attribution_pipeline(effects, portfolio, benchmark):
+    """Production-ready attribution linking with error handling."""
+    try:
+        # Use strict mode in production
+        result = link(
+            effects, 
+            portfolio, 
+            benchmark,
+            check_effects_sum=True,
+            strict=True
+        )
+        logger.info(f"Attribution successful. k-factor: {result.k_factor:.4f}")
+        return result
+        
+    except EffectsSumMismatchError as e:
+        # Log the error and investigate
+        logger.error(f"Attribution validation failed: {e}")
+        
+        # Option 1: Fix the data and retry
+        # effects_corrected = fix_attribution_model(effects, portfolio, benchmark)
+        # return run_attribution_pipeline(effects_corrected, portfolio, benchmark)
+        
+        # Option 2: Alert and fail
+        raise
+        
+    except Exception as e:
+        logger.error(f"Unexpected error in attribution: {e}")
+        raise
+```
+
+### Debugging Validation Failures
+
+If you encounter validation errors, check:
+
+1. **Data alignment**: Ensure effects, portfolio, and benchmark have the same index
+2. **Attribution completeness**: Verify all attribution effects are included
+3. **Calculation errors**: Double-check your attribution model implementation
+4. **Floating point precision**: Use reasonable tolerance (effects sum within ~1e-6 of excess)
+
+```python
+# Debug helper: check period-by-period sums
+excess = portfolio - benchmark
+effects_sum = effects.sum(axis=1)
+
+for date in excess.index:
+    diff = abs(effects_sum[date] - excess[date])
+    if diff > 1e-6:
+        print(f"{date}: effects={effects_sum[date]:.6f}, excess={excess[date]:.6f}, diff={diff:.6f}")
+```
+
+## Fixing the Example
+
+To fix our intentional error, we need to correct the effects:
+
+```python
+# Corrected effects that properly sum to excess
+effects_corrected = pd.DataFrame({
+    "allocation": [0.005, 0.005],  # Fixed: was [0.005, 0.010]
+    "selection":  [0.000, 0.000]   # Fixed: was [0.002, 0.003]
+}, index=portfolio.index)
+
+# Now validation passes
+result = link(effects_corrected, portfolio, benchmark, strict=True)
+print("Success! Validation passed.")
+print(result.summary())
+```
+
+## Next Steps
+
+- See [Quarterly Attribution](/examples/quarterly-attribution) for a working example
+- See [Multiple Effects](/examples/multi-effect) for complex attribution models
+- Learn about [effect validation](/guides/validation) for more details on validation rules

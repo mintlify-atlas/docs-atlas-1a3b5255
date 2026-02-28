@@ -1,0 +1,325 @@
+---
+title: Limitations
+description: When NOT to use the Carino method for attribution linking
+---
+
+## Overview
+
+While the Carino method is powerful and widely used, it has limitations. This guide explains scenarios where Carino may not be appropriate and what to do instead.
+
+<Warning>
+Understanding these limitations is critical for producing reliable attribution analysis. Using Carino in inappropriate scenarios can lead to misleading results.
+</Warning>
+
+## When NOT to Use Carino
+
+### 1. Single-Period Attribution
+
+**Problem**: Carino is designed for **multi-period** linking. For single periods, linking is unnecessary.
+
+**Why**: In a single period:
+- k = 1 by definition (no linking adjustment)
+- Arithmetic = geometric (no compounding)
+- Use standard arithmetic attribution directly
+
+**What to do instead**:
+
+```python
+# Don't use Carino for single period
+if len(periods) == 1:
+    # Just use raw effects directly
+    linked_effects = raw_effects
+else:
+    # Use Carino for multi-period
+    result = link(effects, portfolio, benchmark)
+```
+
+**Example**:
+
+```python
+# Single period: Carino adds no value
+portfolio = pd.Series([0.025])  # One period only
+benchmark = pd.Series([0.018])
+effects = pd.DataFrame({"allocation": [0.005], "selection": [0.002]})
+
+result = link(effects, portfolio, benchmark)
+print(result.k_factor)  # Will be exactly 1.0
+# Result is identical to raw effects - linking was unnecessary
+```
+
+### 2. Near-Zero Cumulative Excess
+
+**Problem**: When cumulative excess return is very close to zero, the k-factor becomes unstable.
+
+**Why**: The k-factor formula includes $\ln(1 + CER)$ in the numerator. As $CER \to 0$, numerical instability arises:
+
+$$
+k = \frac{\ln(1 + CER)}{\sum_{t=1}^{n} \ln(1 + ER_t)}
+$$
+
+**Warning sign**: Cumulative excess return < 0.001 (0.1%)
+
+**What happens**: attriblink automatically sets k = 1.0 when CER is near zero, but interpretation becomes problematic.
+
+**Example**:
+
+```python
+# Portfolio and benchmark nearly identical
+portfolio = pd.Series([0.020, 0.030, 0.025, 0.028])
+benchmark = pd.Series([0.021, 0.029, 0.026, 0.027])  # Very similar
+
+# Cumulative excess ≈ 0.0001 - interpretation is unreliable
+result = link(effects, portfolio, benchmark)
+print(f"Cumulative excess: {((1+portfolio).prod() - (1+benchmark).prod() - 1):.6f}")
+print(f"k-factor: {result.k_factor:.4f}")  # May be set to 1.0 automatically
+```
+
+**What to do instead**:
+- If CER is truly negligible, attribution is not meaningful (no excess to attribute)
+- Consider using a longer time period to accumulate meaningful excess
+- Focus on period-by-period analysis instead of cumulative linking
+
+### 3. Highly Asymmetric Return Distributions
+
+**Problem**: Carino assumes relatively smooth return patterns. Extreme asymmetry can produce misleading results.
+
+**Characteristics of problematic scenarios**:
+- Very large positive returns in some periods (e.g., +50%)
+- Very large negative returns in others (e.g., -40%)
+- Extreme outliers that dominate the calculation
+
+**Why it matters**: The k-factor may become extremely large or small, and the smoothing may not adequately reflect the non-linear dynamics.
+
+**Example**:
+
+```python
+# Extreme asymmetry
+portfolio = pd.Series([0.50, -0.40, 0.60, -0.35])  # Huge swings
+benchmark = pd.Series([0.05, 0.05, 0.05, 0.05])    # Stable
+
+result = link(effects, portfolio, benchmark)
+print(f"k-factor: {result.k_factor:.4f}")  # May be >> 1 or << 1
+# Linked effects may not meaningfully represent contribution
+```
+
+**What to do instead**:
+- Consider alternative methods: **Menchero** or **GRAP** (not implemented in attriblink v0.1.0)
+- Analyze periods separately rather than linking
+- Investigate outlier periods to understand what drove extreme returns
+
+<Note>
+Future versions of attriblink may support Menchero and GRAP methods, which handle asymmetric distributions better than Carino.
+</Note>
+
+### 4. When You Need Geometric Attribution Effects
+
+**Problem**: Carino produces **arithmetic-scaled** effects. If you need pure geometric attribution:
+
+**What Carino does**: Scales arithmetic effects by k-factor to match geometric cumulative excess
+
+**What Carino doesn't do**: Produce geometric attribution effects that compound through time
+
+**When this matters**: 
+- If you want to show how effects "compound" period-by-period
+- If you need attribution effects that multiply rather than add
+
+**What to do instead**:
+- Consider: **Frongello method** or **GRAP method** (not implemented in attriblink v0.1.0)
+- Use geometric attribution models from the start
+
+### 5. Currency Attribution
+
+**Problem**: Carino doesn't handle **currency effects** directly or automatically.
+
+**Why**: Currency attribution requires specialized models that account for:
+- Local vs base currency returns
+- FX rate changes
+- Interaction between local returns and FX moves
+
+**What to do instead**:
+1. Calculate currency attribution effects separately using a currency attribution model
+2. Include currency effects as additional columns in your effects DataFrame
+3. **Then** use Carino to link all effects (including currency)
+
+**Example**:
+
+```python
+# Include currency as an attribution source
+effects = pd.DataFrame({
+    "allocation":       [0.005, 0.006, 0.002, 0.008],
+    "selection":        [0.003, 0.002, -0.001, 0.004],
+    "currency_effect":  [0.001, -0.002, 0.001, 0.002],  # From currency model
+    "interaction":      [0.001, 0.001, 0.000, 0.002]
+}, index=dates)
+
+# Carino can link currency effects along with others
+result = link(effects, portfolio, benchmark)
+```
+
+### 6. Benchmark Timing Differences
+
+**Problem**: If your benchmark and portfolio have **different rebalancing dates** or **misaligned periods**:
+
+**Why**: Carino assumes aligned, synchronized periods. If portfolio rebalances on day 1 and benchmark rebalances on day 15:
+- Period returns are not directly comparable
+- Attribution effects don't represent true active decisions
+- Linked effects may be misleading
+
+**What to do instead**:
+- Ensure periods are synchronized (use common rebalancing dates)
+- If alignment isn't possible, consider daily attribution with daily rebalancing
+- Document the timing differences and interpret results with caution
+
+### 7. When Exact Period Effects Must Be Preserved
+
+**Problem**: Carino scales **all periods equally** by the same k-factor. If you need to show exact per-period contributions:
+
+**Why**: In some regulatory or client reporting scenarios, you must show:
+- Exact period-by-period attribution without adjustment
+- Separate disclosure of period effects vs linked effects
+
+**What to do instead**:
+- Report both raw (period) and linked effects in separate tables
+- Clearly label which is which
+- Explain the difference to your audience
+
+**Example**:
+
+```python
+# Create two reports: period and linked
+period_report = result.effects.copy()
+period_report['Total'] = period_report.sum(axis=1)
+
+linked_report = pd.DataFrame({
+    'Linked Effect': result.linked_effects
+})
+
+print("Period-by-Period Effects:")
+print(period_report)
+print("\nCarino Linked Effects:")
+print(linked_report)
+print(f"\nk-factor: {result.k_factor:.4f}")
+```
+
+## Summary Table
+
+| Use Carino When | Don't Use Carino When |
+|-----------------|----------------------|
+| Multi-period (≥2 periods) | Single period |
+| Moderate return dispersion | Extreme return asymmetry (±50% swings) |
+| Standard Brinson-Fachler or BHB | Currency attribution (without separate model) |
+| Arithmetic attribution effects | Need pure geometric effects |
+| Aligned rebalancing dates | Misaligned portfolio/benchmark |
+| CER is meaningful (e.g., > 0.1%) | CER ≈ 0 (near-zero excess) |
+| Moderate volatility | Extreme outliers or crashes |
+
+## Alternative Methods
+
+If Carino is not suitable for your scenario, consider these alternatives:
+
+### Menchero Method
+
+**When to use**: 
+- Handles asymmetric distributions better than Carino
+- More stable for extreme return scenarios
+
+**Status**: Not implemented in attriblink v0.1.0
+
+**Reference**: Menchero, J. G. (2000). "An Optimized Approach to Linking Attribution Effects Over Time." *The Journal of Performance Measurement*.
+
+### GRAP (Geometric Risk-Adjusted Performance)
+
+**When to use**: 
+- Need geometric attribution effects
+- Risk-adjusted performance analysis
+
+**Status**: Not implemented in attriblink v0.1.0
+
+**Reference**: Bacon, C. (2004). *Practical Portfolio Performance Measurement and Attribution*. Wiley.
+
+### Frongello Method
+
+**When to use**: 
+- Alternative geometric linking approach
+- Handling decompensation issues
+
+**Status**: Not implemented in attriblink v0.1.0
+
+**Reference**: Frongello, A. (2002). "A Methodology for Linking Decompensation." *The Journal of Performance Measurement*.
+
+## How to Detect Problematic Scenarios
+
+Use these checks to identify when Carino may not be appropriate:
+
+```python
+import numpy as np
+
+def check_carino_suitability(portfolio, benchmark):
+    """
+    Check if Carino method is suitable for the given returns.
+    
+    Returns a dictionary of checks and recommendations.
+    """
+    # Calculate key metrics
+    n_periods = len(portfolio)
+    excess = portfolio - benchmark
+    cum_excess = (1 + portfolio).prod() - (1 + benchmark).prod() - 1
+    
+    # Checks
+    checks = {}
+    
+    # 1. Single period check
+    if n_periods == 1:
+        checks['single_period'] = "WARNING: Single period - Carino not needed"
+    else:
+        checks['single_period'] = "OK: Multi-period data"
+    
+    # 2. Near-zero CER check
+    if abs(cum_excess) < 0.001:
+        checks['near_zero_cer'] = f"WARNING: CER = {cum_excess:.6f} is very small"
+    else:
+        checks['near_zero_cer'] = "OK: Meaningful cumulative excess"
+    
+    # 3. Extreme returns check
+    max_return = max(portfolio.max(), benchmark.max())
+    min_return = min(portfolio.min(), benchmark.min())
+    if max_return > 0.30 or min_return < -0.30:
+        checks['extreme_returns'] = f"WARNING: Extreme returns detected (max: {max_return:.1%}, min: {min_return:.1%})"
+    else:
+        checks['extreme_returns'] = "OK: No extreme returns"
+    
+    # 4. Excess volatility check
+    excess_vol = excess.std()
+    if excess_vol > 0.10:
+        checks['high_volatility'] = f"WARNING: High excess return volatility ({excess_vol:.2%})"
+    else:
+        checks['high_volatility'] = "OK: Moderate volatility"
+    
+    return checks
+
+# Usage
+checks = check_carino_suitability(portfolio_returns, benchmark_returns)
+for check, message in checks.items():
+    print(f"{check}: {message}")
+```
+
+## Best Practices
+
+1. **Always inspect the k-factor**: Values far from 1.0 (e.g., < 0.5 or > 2.0) warrant investigation
+
+2. **Review period-by-period returns**: Look for outliers, sign changes, or extreme values
+
+3. **Check cumulative excess**: Ensure it's meaningful (not near zero)
+
+4. **Compare period vs linked effects**: Large differences indicate significant compounding dynamics
+
+5. **Document limitations**: When reporting results, note any caveats about data quality or suitability
+
+6. **Validate your attribution model first**: Use the [validation](/guides/validation) feature to ensure effects are correct
+
+## Next Steps
+
+- Return to [Basic Usage](/guides/basic-usage) for fundamental patterns
+- Learn about [Effect Validation](/guides/validation) to ensure data quality
+- Read [Interpreting Results](/guides/interpreting-results) for detailed k-factor guidance
+- Review the [API Reference](/api-reference/link) for parameter details

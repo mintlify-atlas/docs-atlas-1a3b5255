@@ -1,0 +1,313 @@
+---
+title: Effect Validation
+description: Understanding effect validation and how to handle validation errors
+---
+
+## What is Effect Validation?
+
+Effect validation ensures that your period-by-period attribution effects are internally consistent **before** applying the Carino linking method.
+
+Specifically, the validation checks that for each period $t$:
+
+$$
+\sum_{j} Effect_{j,t} = r_{p,t} - r_{b,t}
+$$
+
+Where:
+- $Effect_{j,t}$ = Attribution effect $j$ in period $t$ (e.g., allocation, selection)
+- $r_{p,t}$ = Portfolio return in period $t$
+- $r_{b,t}$ = Benchmark return in period $t$
+
+In other words, the sum of all attribution effects in each period must equal the excess return (portfolio minus benchmark) for that period.
+
+## Default Behavior
+
+By default, `attriblink.link()` **enables validation** with non-strict mode:
+
+```python
+result = link(effects, portfolio_returns, benchmark_returns)
+# Equivalent to:
+result = link(effects, portfolio_returns, benchmark_returns, 
+              check_effects_sum=True, strict=False)
+```
+
+This means:
+- Validation is performed automatically
+- If effects don't sum correctly, a **warning** is issued
+- The linking calculation **continues** despite the warning
+
+## Why Validation Matters
+
+Validation is critical for three reasons:
+
+### 1. Catch Calculation Errors Early
+
+If your attribution effects don't sum to excess return in a single period, it indicates a bug in your attribution model or calculation:
+
+```python
+# Example: Incorrect effects
+portfolio = pd.Series([0.02, 0.03], index=pd.date_range("2024-01-01", periods=2, freq="ME"))
+benchmark = pd.Series([0.015, 0.025], index=portfolio.index)
+
+# These effects are WRONG - they don't sum to (0.02 - 0.015) = 0.005 for period 1
+effects = pd.DataFrame({
+    "allocation": [0.003, 0.005],  # Should be [0.003, 0.005]
+    "selection":  [0.001, 0.000]   # Should be [0.002, 0.000]
+}, index=portfolio.index)
+
+result = link(effects, portfolio, benchmark)
+# Warning: Effects do not sum to excess return. Sum of period effects: ...
+```
+
+### 2. Prevent Garbage-In-Garbage-Out
+
+Linking incorrect attribution data produces meaningless results. Validation prevents you from unknowingly working with bad data.
+
+### 3. Maintain Credibility
+
+In institutional settings, attribution reports must be accurate. Linked effects that don't match actual returns undermine trust in your analysis.
+
+## Validation Modes
+
+attriblink offers three validation modes:
+
+| Mode | `check_effects_sum` | `strict` | Behavior |
+|------|---------------------|----------|----------|
+| **Non-strict (default)** | `True` | `False` | Issues `UserWarning`, continues with calculation |
+| **Strict** | `True` | `True` | Raises `EffectsSumMismatchError`, stops execution |
+| **Disabled** | `False` | N/A | Skips validation entirely, proceeds with linking |
+
+### Non-Strict Mode (Default)
+
+Suitable for exploratory analysis where you want to see results even if validation fails:
+
+```python
+import warnings
+
+with warnings.catch_warnings(record=True) as w:
+    warnings.simplefilter("always")
+    result = link(effects, portfolio, benchmark, strict=False)
+    
+    if w:
+        print(f"Warning: {w[0].message}")
+        # Decide whether to use the results or fix the data
+```
+
+### Strict Mode
+
+Suitable for production systems where data integrity is critical:
+
+```python
+from attriblink import EffectsSumMismatchError
+
+try:
+    result = link(effects, portfolio, benchmark, strict=True)
+except EffectsSumMismatchError as e:
+    print(f"Validation failed: {e}")
+    # Log error, alert user, fix data, etc.
+    raise
+```
+
+<Warning>
+In strict mode, any validation failure will raise an exception and halt execution. Use this when data quality is paramount.
+</Warning>
+
+### Disabled Validation
+
+Validation can be disabled entirely:
+
+```python
+result = link(effects, portfolio, benchmark, check_effects_sum=False)
+```
+
+<Warning>
+Disabling validation removes an important safety check. Only do this if you have a specific reason (see below).
+</Warning>
+
+## Handling Validation Errors
+
+### Understanding the Error Message
+
+When validation fails, you'll see a message like:
+
+```
+Effects do not sum to excess return. 
+Sum of period effects: 0.0310000000, 
+Sum of excess returns: 0.0320000000, 
+Difference: 0.0010000000
+```
+
+This tells you:
+- The total sum of all effects across all periods
+- The total sum of excess returns across all periods
+- The discrepancy between them
+
+### Debugging Steps
+
+1. **Check your attribution formula**: Verify that allocation, selection, and interaction are calculated correctly
+2. **Inspect period-by-period sums**:
+   ```python
+   excess_returns = portfolio_returns - benchmark_returns
+   effects_sum = effects.sum(axis=1)
+   
+   comparison = pd.DataFrame({
+       'excess': excess_returns,
+       'effects_sum': effects_sum,
+       'difference': excess_returns - effects_sum
+   })
+   print(comparison)
+   ```
+3. **Look for rounding errors**: Small differences (< 1e-9) may be due to floating-point precision
+4. **Verify index alignment**: Ensure effects, portfolio_returns, and benchmark_returns have matching indices
+
+### Fixing Small Rounding Errors
+
+If effects are close but not exact due to rounding, you can adjust them:
+
+```python
+# Calculate excess returns
+excess_returns = portfolio_returns - benchmark_returns
+
+# Normalize effects to sum exactly to excess
+effects_normalized = effects.div(effects.sum(axis=1), axis=0).multiply(excess_returns, axis=0)
+
+# Now this will pass validation
+result = link(effects_normalized, portfolio_returns, benchmark_returns)
+```
+
+## When to Disable Validation
+
+There are legitimate scenarios where you might disable validation:
+
+### 1. Legacy Data
+
+Historical attribution data where the original calculation methodology is unknown or unavailable:
+
+```python
+# Working with legacy data from an old system
+legacy_effects = pd.read_csv("historical_attribution.csv", index_col=0)
+result = link(legacy_effects, portfolio, benchmark, check_effects_sum=False)
+```
+
+### 2. Custom Scaling
+
+When you've pre-scaled effects using a different methodology:
+
+```python
+# Custom pre-scaling applied
+effects_custom_scaled = apply_custom_scaling(raw_effects)
+result = link(effects_custom_scaled, portfolio, benchmark, check_effects_sum=False)
+```
+
+### 3. Alternative Attribution Models
+
+Some geometric attribution models produce effects that intentionally don't sum to arithmetic excess return:
+
+```python
+# Geometric attribution effects
+geometric_effects = calculate_geometric_attribution(portfolio, benchmark)
+result = link(geometric_effects, portfolio, benchmark, check_effects_sum=False)
+```
+
+<Note>
+Even when disabling validation, the Carino method will still ensure that the **linked** effects sum to the cumulative excess return. This is a fundamental property of the method.
+</Note>
+
+## Validation Tolerance
+
+The validation uses a tolerance of **1e-9** (0.000000001) for floating-point comparisons. This accounts for:
+
+- Machine precision limits
+- Rounding in intermediate calculations
+- Numerical stability
+
+Effects that differ from excess returns by less than this tolerance will pass validation.
+
+## Scaling Behavior
+
+attriblink applies two types of scaling:
+
+### 1. k-Factor Scaling
+
+Applied automatically via the Carino formula to convert period effects into linked effects:
+
+$$
+Effect_{linked} = k \times \sum_{t=1}^{n} Effect_t
+$$
+
+### 2. Residual Scaling
+
+A final adjustment to ensure exact additivity (accounting for numerical precision):
+
+```python
+# After Carino linking, exact additivity is guaranteed
+linked_sum = result.linked_effects.sum()
+cumulative_excess = (1 + portfolio_returns).prod() - (1 + benchmark_returns).prod() - 1
+
+assert abs(linked_sum - cumulative_excess) < 1e-10  # Always true
+```
+
+## Example: Handling Validation in Production
+
+Here's a complete example showing how to handle validation in a production environment:
+
+```python
+import pandas as pd
+import logging
+from attriblink import link, EffectsSumMismatchError
+
+logger = logging.getLogger(__name__)
+
+def perform_attribution_linking(effects, portfolio, benchmark, allow_approximate=False):
+    """
+    Perform attribution linking with robust error handling.
+    
+    Args:
+        effects: Attribution effects DataFrame
+        portfolio: Portfolio returns Series
+        benchmark: Benchmark returns Series
+        allow_approximate: If True, use non-strict mode; if False, use strict mode
+    
+    Returns:
+        AttributionResult if successful, None if validation fails
+    """
+    try:
+        if allow_approximate:
+            # Non-strict: warn but continue
+            import warnings
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                result = link(effects, portfolio, benchmark, strict=False)
+                
+                if w:
+                    logger.warning(f"Attribution validation warning: {w[0].message}")
+                    logger.info("Continuing with approximate results")
+                
+                return result
+        else:
+            # Strict: raise on error
+            result = link(effects, portfolio, benchmark, strict=True)
+            logger.info("Attribution linking successful, all validations passed")
+            return result
+            
+    except EffectsSumMismatchError as e:
+        logger.error(f"Attribution validation failed: {e}")
+        logger.error("Effects do not sum to excess return - check attribution calculation")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error during attribution linking: {e}")
+        raise
+
+# Usage
+result = perform_attribution_linking(effects, portfolio, benchmark, allow_approximate=False)
+if result:
+    print(result.summary())
+else:
+    print("Attribution linking failed - data quality issues detected")
+```
+
+## Next Steps
+
+- Return to [Basic Usage](/guides/basic-usage) for fundamental patterns
+- Learn about [Interpreting Results](/guides/interpreting-results) to understand the k-factor
+- Review [Limitations](/guides/limitations) to know when validation might be misleading

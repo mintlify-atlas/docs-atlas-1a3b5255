@@ -1,0 +1,93 @@
+---
+title: Introduction
+description: Multi-period attribution linking for portfolio returns
+---
+
+## What is attriblink?
+
+Attriblink is a Python package for **attribution linking** in investment performance analysis. It decomposes portfolio returns across multiple periods while preserving additivity, allowing you to understand how different attribution effects contribute to cumulative excess returns over time.
+
+## The Attribution Linking Problem
+
+When analyzing portfolio performance over multiple periods, simply summing period-by-period attribution effects doesn't work due to compounding. Attribution linking solves this by applying sophisticated methods that ensure linked effects:
+
+- Sum exactly to the cumulative excess return
+- Preserve the relative importance of each effect
+- Account for geometric compounding of returns
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Carino Method" icon="chart-line">
+    Industry-standard linking method using k-factor smoothing to achieve geometric additivity
+  </Card>
+  
+  <Card title="k-Factor Analysis" icon="gauge-high">
+    Diagnostic coefficient showing return volatility patterns (k > 1: volatile, k < 1: consistent)
+  </Card>
+  
+  <Card title="Automatic Validation" icon="circle-check">
+    Built-in checks verify effects sum to excess returns, catching attribution errors early
+  </Card>
+  
+  <Card title="Pandas Integration" icon="table">
+    Works seamlessly with pandas DataFrames and Series for time-series analysis
+  </Card>
+</CardGroup>
+
+## How It Works
+
+The Carino method uses a smoothing coefficient (k-factor) to scale attribution effects:
+
+- **k = 1.0**: No adjustment needed (arithmetic equals geometric)
+- **k > 1**: Volatile excess returns — effects scaled up
+- **k < 1**: Consistent excess returns — effects scaled down
+
+The sum of linked effects always equals the cumulative excess return, preserving additivity.
+
+## Quick Example
+
+```python
+import pandas as pd
+from attriblink import link
+
+# Quarterly returns and attribution effects
+portfolio_returns = pd.Series([0.025, 0.035, -0.012, 0.048])
+benchmark_returns = pd.Series([0.018, 0.028, -0.015, 0.038])
+
+effects = pd.DataFrame({
+    "allocation": [0.005, 0.006, 0.002, 0.008],
+    "selection": [0.003, 0.002, -0.001, 0.004]
+})
+
+# Link effects using Carino method
+result = link(effects, portfolio_returns, benchmark_returns)
+
+print(result.summary())
+print(f"k-factor: {result.k_factor:.4f}")
+```
+
+## Get Started
+
+<CardGroup cols={3}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install attriblink with pip and verify your setup
+  </Card>
+  
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get up and running with your first attribution link
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api/link">
+    Explore the complete API documentation
+  </Card>
+</CardGroup>
+
+## Use Cases
+
+Attriblink is designed for:
+
+- **Portfolio Managers**: Understand how allocation and selection decisions contributed to multi-period performance
+- **Performance Analysts**: Generate accurate attribution reports across quarters or years
+- **Quantitative Researchers**: Validate attribution models and analyze return patterns
+- **Risk Teams**: Decompose excess returns to identify sources of outperformance or underperformance
